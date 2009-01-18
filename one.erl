@@ -10,6 +10,7 @@ start() ->
 
 cancel(Pid) -> Pid ! cancel.
 
+counter(10) -> void; 
 counter(N) -> 
 	io:format("hi ~p ~n", [N]),
     receive    
