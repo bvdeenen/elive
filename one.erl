@@ -14,8 +14,11 @@ counter(N) ->
 	io:format("hi ~p ~n", [N]),
     receive    
 		cancel->
+			void;
+		anything ->
+			io:format("stopping~n"),
 			void
-		after 500 ->
+		after 1500 ->
 			counter(N+1)
     end.
 
