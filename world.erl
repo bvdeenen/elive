@@ -3,11 +3,12 @@
 -compile(export_all).
 
 start(N) ->
-	Pid = spawn(fun() -> loop([]) end),
+	Pid = spawn(fun() -> loop(startup) end),
 	register( world, Pid),
-	start_one(N),
-	Pid.
+	start_one(N) .
+	
 
+%% rpc for every beast
 rpc(Pid, Request) ->
 	%io:format("world:rpc(~p,~p)~n", [Pid, Request]),
 	Pid ! {self(), Request},
@@ -16,10 +17,21 @@ rpc(Pid, Request) ->
 			{'World responds', Response}
 	end.		
 
+%% message from beasts
+loop(startup) ->
+	process_flag(trap_exit, true),
+	loop([]);
+
 loop(Beasts) ->
+	%%io:format("Beasts is now ~p~n", [Beasts]),
 	receive 
+		{'EXIT', Pid, Why } ->
+			io:format("beast ~p has died ~p~n", [Pid, Why]),
+			loop(Beasts);
+
 		{birth, Pid} ->
 			io:format("new birth of ~p~n", [Pid]),
+			link(Pid),
 			loop([Pid|Beasts]);
 		
 		die ->
@@ -35,6 +47,7 @@ kill_beasts([]) ->
 
 kill_beasts(Beasts) ->
 	[Pid|Rest] = Beasts,
+	io:format("Sending 'die' to ~p~n", [Pid]), 
 	Pid ! die,
 	kill_beasts(Rest).
 

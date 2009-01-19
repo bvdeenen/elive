@@ -1,28 +1,13 @@
 %% ---
-%% loops and prints
 %%---
 -module(one).
 
 -export([start/0]).
 
 start() -> 
-	 OnePid= spawn(fun() -> counter(startup) end),
-	 spawn(fun() -> loop(OnePid) end).
+	 spawn(fun() -> counter(startup) end).
 
-% message handler
-loop(OnePid) ->
-	receive
-		die -> 
-			io:format("one ~p is killed~n", [self()] ),
-			OnePid ! die;
-		Any ->
-			io:format("one ~p receive ~p~n", [self(), Any]),
-			loop(OnePid)
-	end.
-
-cancel(Pid) -> Pid ! cancel.
-
-counter(10) -> 
+counter(4) -> 
 	void; 
 
 counter(startup) ->
