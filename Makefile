@@ -7,7 +7,7 @@
 	erlc -W $<
 
 ERL = erl -boot start_clean
-MODS = one world worldrunner
+MODS = elive
 
 all: compile
 
