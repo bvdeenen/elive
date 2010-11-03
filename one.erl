@@ -1,4 +1,4 @@
-%% ---
+%% --- one beast
 %%---
 -module(one).
 
