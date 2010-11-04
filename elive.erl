@@ -42,9 +42,9 @@ ball(create, _Index, Canvas, World) ->
 	%io:format("Pos=~p~n", [Pos]),
 	Size = rand_uniform(1,10)+5,
 	Self=self(),
-	spawn_link( fun() -> ask_neighbour_info(Self, World) end ),
 	Color=red,
     Ball=gs:oval(Canvas,[{coords,[Pos ,{X+Size,Y+Size}]},{fill,Color}]),
+	spawn_link( fun() -> ask_neighbour_info(Self, Ball, World) end ),
 	ball(Ball, World).
 	
 	
@@ -52,7 +52,6 @@ ball(Ball, World  ) ->
 	[{X,Y}, {X2,Y2}]=gs:read(Ball, coords),
 	DSize=0.1,
 	PosN=[{X-DSize, Y-DSize}, {X2+DSize, Y2+DSize}],
-
 	
     gs:config(Ball,{coords,PosN}),
 
@@ -63,9 +62,8 @@ ball(Ball, World  ) ->
 		{Pid, get_info} ->
 			Pid ! {self(), info, PosN};
 		{neighbour_info, Info} ->
-			%[{X1,Y1}, {X2,Y2}] = Info,
-			io:format("~p Received neighbour_info= ~p ~n", [self(),
-			length(Info)]);
+			{A, B, C, D} = Info,
+			io:format("~p Received neighbour_info= ~p ~n", [self(), Info]);
 		Message ->
 			io:format("~p received unexpected ~p~n", [self(), Message])
     after 20 ->
@@ -74,7 +72,7 @@ ball(Ball, World  ) ->
 	ball(Ball, World).
 
 
-ask_neighbour_info(Owner, World) ->
+ask_neighbour_info(Owner, Ball, World) ->
 	
 	World ! { self(), give_pids },
 	receive
@@ -86,9 +84,40 @@ ask_neighbour_info(Owner, World) ->
 	lists:map(fun(Pid) -> Pid ! {self(), get_info} end, Others),
 	NeighbourInfo = collect_neighbour_info(Others),
 	%io:format("NeighbourInfo=~p~n", [NeighbourInfo]),
-	Owner ! {neighbour_info, NeighbourInfo}.
+	[{X,Y}, {X2,Y2}]=gs:read(Ball, coords),
+	Center={ (X2+X)/2, (Y+Y2)/2 },
 
+	QuadrantInfo=quadrant_info(NeighbourInfo, Center, 0, 0, 0, 0),
+	Owner ! {neighbour_info, QuadrantInfo},
+	receive
+		after 1000 ->
+			ask_neighbour_info(Owner, Ball, World)
+	end.		
 
+quadrant_info([], _Center, A, B, C, D) -> 
+	{A, B, C, D};
+
+quadrant_info([[{X3,Y3}, {X2,Y2}]|T], Center, A, B, C, D) ->
+	{X0,Y0}=Center,
+	OtherCenter={ (X2+X3)/2, (Y3+Y2)/2 },
+	{X1,Y1}=OtherCenter,
+	OtherSize = X2-X3,
+	
+	Limit=50,
+	if
+		X1 < X0-Limit; 
+		X1 > X0+Limit;
+		Y1 < Y0-Limit;
+		Y1 > Y0+Limit -> quadrant_info(T, Center, A,B,C,D);
+		
+		X1 < X0, Y1 < Y0 -> quadrant_info(T, Center, A+OtherSize, B, C, D);
+		X1 < X0, Y1 >= Y0 -> quadrant_info(T, Center, A, B+OtherSize, C, D);
+		X1 > X0, Y1 <Y0 -> quadrant_info(T, Center, A, B, C+OtherSize, D);
+		X1 > X0, Y1 >= Y0 -> quadrant_info(T, Center, A, B, C, D+OtherSize);
+		true -> 999
+	end.
+
+	
 
 collect_neighbour_info([]) -> [] ;
 
@@ -104,4 +133,4 @@ collect_neighbour_info([H|T]) ->
 	
 	
 	
-
+%% vim:tw=0
