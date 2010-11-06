@@ -3,13 +3,19 @@
 
 -import(crypto, [rand_uniform/2, start/0]).
 
+-record(status, {color=red,
+	dsize=0.1,
+	quadrants=[],
+	generation=1
+	}).
+
 init() ->
 	crypto:start(),
 	I= gs:start(),
-	W= gs:window(I,[{title,"Ball"},{width,300},{height,300},{map,true}]),
-	Canvas= gs:canvas(W,[{width,300},{height,300},{bg,yellow}]),
+	W= gs:window(I,[{title,"Ball"},{width,600},{height,600},{map,true}]),
+	Canvas= gs:canvas(W,[{width,600},{height,600},{bg,yellow}]),
 	gs:create(button, quit, W, [{label, {text,"Quit Demo"}},{x,100}]),
-	Pids = create_balls(Canvas, self(), _Nballs=30),
+	Pids = create_balls(Canvas, self(), _Nballs=10),
 	loop(Canvas, Pids),
 	gs:stop().
 
@@ -29,38 +35,56 @@ loop(Canvas, Pids) ->
 			quit_balls(Pids);
 		{gs,quit,click,_,_} ->
 			quit_balls(Pids);
+		{ _Pid, split, Ball, Status } when Status#status.quadrants =/= [] ->
+			Pid1=clone_ball(Ball, Canvas, Status) ,
+			case Pid1 of
+				false -> loop(Canvas, Pids)	;
+				Pid1 ->  loop(Canvas, [Pid1 | Pids] )
+			end	;
 		Message ->
 			io:format("~p~n", [Message]),
 			loop(Canvas, Pids)
 	end.
 
+
 quit_balls(Pids) ->
 	lists:map( fun(Pid) -> Pid ! die end, Pids).
 
 ball(create, _Index, Canvas, World) ->
-	{X,Y} = Pos = { rand_uniform(1,250), rand_uniform(1, 250) },
+	Pos = { rand_uniform(200,400), rand_uniform(200, 400) },
+	ball(create, _Index, Canvas, World, Pos).
+
+ball(create, _Index, Canvas, World, Pos) ->
+	{X,Y} = Pos ,
 	%io:format("Pos=~p~n", [Pos]),
 	Size = rand_uniform(1,10)+5,
 	Self=self(),
 	Color=red,
 	Ball=gs:oval(Canvas,[{coords,[Pos ,{X+Size,Y+Size}]},{fill,Color}]),
 	spawn_link( fun() -> ask_neighbour_info(Self, Ball, World) end ),
-	ball(Ball, World, _DSize=0.1).
+	ball(Ball, World, #status{} ).
 
 
-ball(Ball, World, DSize  ) ->
-	[{X,Y}, {X2,Y2}]=gs:read(Ball, coords),
+ball(Ball, World, Status  ) ->
+	Coords=gs:read(Ball, coords),
+	if 	
+		Coords =:= no_such_object -> exit(normal);
+		true -> true
+	end,	
+	[{X,Y}, {X2,Y2}] = Coords,
+	DSize = Status#status.dsize,
 	PosN=[{X-DSize, Y-DSize}, {X2+DSize, Y2+DSize}],
 
 	gs:config(Ball,{coords,PosN}),
 
+	NewStatus = 
 	receive
 		die ->
 			%% io:format("~p being told to die~n", [self()]),
 			exit(normal);
 		{Pid, get_info} ->
 			Pid ! {self(), info, PosN},
-			ball(Ball, World, DSize);
+			Status;
 		{neighbour_info, Info} ->
 			{A, B, C, D} = Info,
 			%io:format("~p Received neighbour_info= ~p ~n", [self(), Info]),
@@ -69,21 +93,28 @@ ball(Ball, World, DSize  ) ->
 				A > Limit, B>Limit, C>Limit, D>Limit ->
 					io:format("~p stopped growing~n", [self()]),
 					gs:config(Ball, {fill, green}),
-					ball(Ball, World, 0);
+					Status#status{dsize=0, color=green};
 				true ->
-					ball(Ball, World, DSize)
+					Status#status{quadrants=Info}
 			end;
 
 		Message ->
 			io:format("~p received unexpected ~p~n", [self(), Message]),
-			ball(Ball, World, DSize)
-	after 20 ->
-		DS=if
-			X2-X+2*DSize > 80 -> 0;
-			true -> DSize
-		end,
-		ball(Ball, World, DS)
-	end.
+			Status
+	after 100 ->
+		if
+			X2-X+2*DSize > 80 -> Status#status{dsize=0};
+			true -> Status
+		end
+	end,
+
+	if 
+		Status#status.generation rem  30 =:= 0 ->
+			World ! { self(), split, Ball, NewStatus };
+		true ->
+			true
+	end,		
+	ball(Ball, World, NewStatus#status{generation=Status#status.generation+1}).
 
 
 ask_neighbour_info(Owner, Ball, World) ->
@@ -132,6 +163,39 @@ quadrant_info([[{X3,Y3}, {X2,Y2}]|T], Center, A, B, C, D) ->
 	end.
 
 
+clone_ball(Ball, Canvas, Status) ->
+	io:format("trying to clone ~p ~p ~n", [Ball, Status]),
+	{A,B,C,D} = Status#status.quadrants,
+	VLimit=50,
+	{DLo, DLimit}={20, 150},
+	[{X,Y}, {_X2,_Y2}]=gs:read(Ball, coords),
+
+	{DX,DY}=
+	if 
+		A < VLimit ->
+			{-rand_uniform(DLo, DLimit), -rand_uniform(DLo, DLimit) };
+		B < VLimit ->
+			{-rand_uniform(DLo, DLimit), rand_uniform(DLo, DLimit) };
+		C < VLimit ->
+			{rand_uniform(DLo, DLimit), -rand_uniform(DLo, DLimit) };
+		D < VLimit ->
+			{rand_uniform(DLo, DLimit), rand_uniform(DLo, DLimit) };
+		true ->
+			{0,0}
+	end,
+
+	World = self(),
+	Pid=
+	if 
+		{DX,DY} =/= {0,0} ->
+			
+			P=spawn(fun() -> ball(create, DX, Canvas, World, {X+DX, Y+DY}) end),
+			io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
+			P;
+		true ->
+			false
+	end,
+	Pid.
 
 collect_neighbour_info([]) -> [] ;
 
