@@ -26,7 +26,7 @@ create_balls(_, _World, 0) ->
 	[];
 
 create_balls( Canvas, World, Nballs) ->
-	Pid = spawn(fun() -> ball(create, Nballs, Canvas, World) end),
+	Pid = spawn(fun() -> create_ball(Canvas, World) end),
 	[Pid | create_balls(Canvas, World, Nballs-1)].
 
 loop(Canvas, Pids) ->
@@ -38,6 +38,8 @@ loop(Canvas, Pids) ->
 			quit_balls(Pids);
 		{gs,quit,click,_,_} ->
 			quit_balls(Pids);
+		{gs, A, B, C, D} ->
+			io:format("GS message ~p ~p ~p ~p~n", [A,B,C,D]);
 		{ _Pid, split, OldState } when OldState#state.quadrants =/= [] ->
 			Pid1=clone_ball(Canvas, OldState) ,
 			case Pid1 of
@@ -56,11 +58,11 @@ loop(Canvas, Pids) ->
 quit_balls(Pids) ->
 	lists:map( fun(Pid) -> Pid ! die end, Pids).
 
-ball(create, _Index, Canvas, World) ->
+create_ball(Canvas, World) ->
 	Pos = { rand_uniform(200,400), rand_uniform(200, 400) },
-	ball(create, _Index, Canvas, World, Pos).
+	create_ball(Canvas, World, Pos).
 
-ball(create, _Index, Canvas, World, {X,Y}) ->
+create_ball(Canvas, World, {X,Y}) ->
 	State=#state{pos={X,Y}},
 	Size = State#state.size, %% uses default value from recrd
 	Self=self(),
@@ -70,10 +72,12 @@ ball(create, _Index, Canvas, World, {X,Y}) ->
 	ball(Ball, World, State ).
 
 
+
 ball(Ball, World, OldState  ) ->
 	{X,Y}=OldState#state.pos,
 	Size = OldState#state.size + OldState#state.dsize,
-	gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, {fill, OldState#state.color}]),
+	gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
+		{fill, OldState#state.color}]),
 
 	%% receive can lead to a state change
 	NewState = 
@@ -95,7 +99,6 @@ ball(Ball, World, OldState  ) ->
 				true ->
 					OldState#state{quadrants=QuadrantInfo}
 			end;
-
 		Message ->
 			io:format("~p received unexpected ~p~n", [self(), Message]),
 			OldState
@@ -111,7 +114,9 @@ ball(Ball, World, OldState  ) ->
 
 	R=rand_uniform(0,100) ,
 	if 
-		OldState#state.generation rem  30 =:= 0, R > 80 ->
+		NewState#state.generation rem  30 =:= 0, 
+		NewState#state.color =:= red,
+		R > 80  ->
 			World ! { self(), split, NewState1 };
 		true ->
 			true
@@ -140,7 +145,6 @@ ask_neighbour_info(Owner, World) ->
 	lists:map(fun(Pid) -> Pid ! {self(), get_info} end, Others),
 	NeighbourInfo = collect_neighbour_info(Others),
 	%% io:format("NeighbourInfo=~p~n", [NeighbourInfo]),
-
 	QuadrantInfo=quadrant_info(NeighbourInfo, Center, 0, 0, 0, 0),
 	Owner ! {neighbour_info, QuadrantInfo},
 	receive
@@ -162,10 +166,10 @@ quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
 		Y1 < (Y0-Limit);
 		Y1 > (Y0+Limit) -> quadrant_info(T, Center, A,B,C,D);
 
-		X1 < X0, Y1 < Y0 -> quadrant_info(T, Center, A+OtherSize, B, C, D);
-		X1 < X0, Y1 >= Y0 -> quadrant_info(T, Center, A, B+OtherSize, C, D);
-		X1 >= X0, Y1 <Y0 -> quadrant_info(T, Center, A, B, C+OtherSize, D);
-		X1 >= X0, Y1 >= Y0 -> quadrant_info(T, Center, A, B, C, D+OtherSize);
+		X1 < X0  , Y1 < Y0 -> quadrant_info(T  , Center , A+OtherSize , B           , C           , D);
+		X1 < X0  , Y1 >= Y0 -> quadrant_info(T , Center , A           , B+OtherSize , C           , D);
+		X1 >= X0 , Y1 <Y0 -> quadrant_info(T   , Center , A           , B           , C+OtherSize , D);
+		X1 >= X0 , Y1 >= Y0 -> quadrant_info(T , Center , A           , B           , C           , D+OtherSize);
 		true -> 999
 	end.
 
@@ -173,19 +177,15 @@ quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
 clone_ball(Canvas, OldState) ->
 	{A,B,C,D} = OldState#state.quadrants,
 	VLimit=50,
-	{DLo, DLimit}={20, 50},
 	{X,Y} = OldState#state.pos,
 
+	F=fun() -> rand_uniform(20, 50) end,
 	{DX,DY}=
 	if 
-		A < VLimit ->
-			{-rand_uniform(DLo, DLimit), -rand_uniform(DLo, DLimit) };
-		B < VLimit ->
-			{-rand_uniform(DLo, DLimit), rand_uniform(DLo, DLimit) };
-		C < VLimit ->
-			{rand_uniform(DLo, DLimit), -rand_uniform(DLo, DLimit) };
-		D < VLimit ->
-			{rand_uniform(DLo, DLimit), rand_uniform(DLo, DLimit) };
+		A < VLimit -> {-F(), -F() };
+		B < VLimit -> {-F(),  F() };
+		C < VLimit -> { F(), -F() };
+		D < VLimit -> { F(),  F() };
 		true ->
 			{no_clone, no_clone}
 	end,
@@ -194,7 +194,7 @@ clone_ball(Canvas, OldState) ->
 	Pid=
 	if 
 		DX =/= no_clone ->
-			P=spawn(fun() -> ball(create, DX, Canvas, World, {X+DX, Y+DY}) end),
+			P=spawn(fun() -> create_ball(Canvas, World, {X+DX, Y+DY}) end),
 			io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
 			P;
 		true ->
