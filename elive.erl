@@ -40,15 +40,12 @@ loop(Canvas, Pids) ->
 			quit_balls(Pids);
 		{gs, A, B, C, D} ->
 			io:format("GS message ~p ~p ~p ~p~n", [A,B,C,D]);
-		{ _Pid, split, OldState } when OldState#state.quadrants =/= [] ->
+		{ _Pid, split, OldState } ->
 			Pid1=clone_ball(Canvas, OldState) ,
 			case Pid1 of
 				false -> loop(Canvas, Pids)	;
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] )
 			end	;
-		{ _, split, OldState } when OldState#state.quadrants =:= [] ->
-			%% ignore unset quadrant info
-			loop(Canvas, Pids);
 		Message ->
 			io:format("Canvas got unexpected ~p~n", [Message]),
 			loop(Canvas, Pids)
@@ -89,11 +86,11 @@ ball(Ball, World, OldState  ) ->
 			Pid ! {self(), info, OldState},
 			OldState;
 		{neighbour_info, QuadrantInfo} ->
-			{A, B, C, D} = QuadrantInfo,
 			%io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
 			Limit=50,
+			QuadrantSum=lists:sum(QuadrantInfo),
 			if
-				A > Limit, B>Limit, C>Limit, D>Limit ->
+				QuadrantSum > 4 * Limit ->
 					io:format("~p stopped growing~n", [self()]),
 					OldState#state{dsize=0, color=green};
 				true ->
@@ -102,7 +99,7 @@ ball(Ball, World, OldState  ) ->
 		Message ->
 			io:format("~p received unexpected ~p~n", [self(), Message]),
 			OldState
-	after 200 ->
+	after 50 ->
 		OldState
 	end,
 	NewState1=
@@ -116,6 +113,7 @@ ball(Ball, World, OldState  ) ->
 	if 
 		NewState#state.generation rem  30 =:= 0, 
 		NewState#state.color =:= red,
+		NewState#state.quadrants =/= [],
 		R > 80  ->
 			World ! { self(), split, NewState1 };
 		true ->
@@ -153,7 +151,7 @@ ask_neighbour_info(Owner, World) ->
 	end.
 
 quadrant_info([], _Center, A, B, C, D) ->
-	{A, B, C, D};
+	[A, B, C, D];
 
 quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
 
@@ -175,20 +173,31 @@ quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
 
 
 clone_ball(Canvas, OldState) ->
-	{A,B,C,D} = OldState#state.quadrants,
+	Z=lists:zip( lists:seq(0,3), OldState#state.quadrants ),
 	VLimit=50,
+	SortF=fun({_N0, Q0},{_N1, Q1}) -> Q0 < Q1 end,
+	Z1=lists:sort(SortF, Z),
+
+	{I, Q} =lists:nth(1,Z1),
+	
 	{X,Y} = OldState#state.pos,
 
+	io:format("clone_ball quadrants = ~p~n", [ OldState#state.quadrants]),
 	F=fun() -> rand_uniform(20, 50) end,
+
 	{DX,DY}=
 	if 
-		A < VLimit -> {-F(), -F() };
-		B < VLimit -> {-F(),  F() };
-		C < VLimit -> { F(), -F() };
-		D < VLimit -> { F(),  F() };
+		Q < VLimit -> 
+			case I of 
+				0 -> {-F(), -F() } ;
+				1 -> {-F(),  F() } ;
+				2 -> { F(), -F() } ;
+				3 -> { F(),  F() } ;
+				true -> { 0, 0}
+			end	;
 		true ->
 			{no_clone, no_clone}
-	end,
+		end,
 
 	World = self(),
 	Pid=
