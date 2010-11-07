@@ -3,7 +3,7 @@
 
 -import(crypto, [rand_uniform/2, start/0]).
 
--record(status, {color=red,
+-record(state, {color=red,
 	dsize=0.1,
 	quadrants=[],
 	generation=1
@@ -35,8 +35,8 @@ loop(Canvas, Pids) ->
 			quit_balls(Pids);
 		{gs,quit,click,_,_} ->
 			quit_balls(Pids);
-		{ _Pid, split, Ball, Status } when Status#status.quadrants =/= [] ->
-			Pid1=clone_ball(Ball, Canvas, Status) ,
+		{ _Pid, split, Ball, OldState } when OldState#state.quadrants =/= [] ->
+			Pid1=clone_ball(Ball, Canvas, OldState) ,
 			case Pid1 of
 				false -> loop(Canvas, Pids)	;
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] )
@@ -62,59 +62,57 @@ ball(create, _Index, Canvas, World, Pos) ->
 	Color=red,
 	Ball=gs:oval(Canvas,[{coords,[Pos ,{X+Size,Y+Size}]},{fill,Color}]),
 	spawn_link( fun() -> ask_neighbour_info(Self, Ball, World) end ),
-	ball(Ball, World, #status{} ).
+	ball(Ball, World, #state{} ).
 
 
-ball(Ball, World, Status  ) ->
+ball(Ball, World, OldState  ) ->
 	Coords=gs:read(Ball, coords),
-	if 	
-		Coords =:= no_such_object -> exit(normal);
-		true -> true
-	end,	
 	[{X,Y}, {X2,Y2}] = Coords,
-	DSize = Status#status.dsize,
+	DSize = OldState#state.dsize,
 	PosN=[{X-DSize, Y-DSize}, {X2+DSize, Y2+DSize}],
 
 	gs:config(Ball,{coords,PosN}),
 
-	NewStatus = 
+	%% receive can lead to a state change
+	NewState = 
 	receive
 		die ->
 			%% io:format("~p being told to die~n", [self()]),
 			exit(normal);
 		{Pid, get_info} ->
 			Pid ! {self(), info, PosN},
-			Status;
-		{neighbour_info, Info} ->
-			{A, B, C, D} = Info,
-			%io:format("~p Received neighbour_info= ~p ~n", [self(), Info]),
+			OldState;
+		{neighbour_info, QuadrantInfo} ->
+			{A, B, C, D} = QuadrantInfo,
+			%io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
 			Limit=50,
 			if
 				A > Limit, B>Limit, C>Limit, D>Limit ->
 					io:format("~p stopped growing~n", [self()]),
 					gs:config(Ball, {fill, green}),
-					Status#status{dsize=0, color=green};
+					OldState#state{dsize=0, color=green};
 				true ->
-					Status#status{quadrants=Info}
+					OldState#state{quadrants=QuadrantInfo}
 			end;
 
 		Message ->
 			io:format("~p received unexpected ~p~n", [self(), Message]),
-			Status
+			OldState
 	after 100 ->
 		if
-			X2-X+2*DSize > 80 -> Status#status{dsize=0};
-			true -> Status
+			X2-X+2*DSize > 80 -> OldState#state{dsize=0};
+			true -> OldState
 		end
 	end,
+	%% NewState is now set
 
 	if 
-		Status#status.generation rem  30 =:= 0 ->
-			World ! { self(), split, Ball, NewStatus };
+		OldState#state.generation rem  30 =:= 0 ->
+			World ! { self(), split, Ball, NewState };
 		true ->
 			true
 	end,		
-	ball(Ball, World, NewStatus#status{generation=Status#status.generation+1}).
+	ball(Ball, World, NewState#state{generation=OldState#state.generation+1}).
 
 
 ask_neighbour_info(Owner, Ball, World) ->
@@ -163,9 +161,9 @@ quadrant_info([[{X3,Y3}, {X2,Y2}]|T], Center, A, B, C, D) ->
 	end.
 
 
-clone_ball(Ball, Canvas, Status) ->
-	io:format("trying to clone ~p ~p ~n", [Ball, Status]),
-	{A,B,C,D} = Status#status.quadrants,
+clone_ball(Ball, Canvas, OldState) ->
+	io:format("trying to clone ~p ~p ~n", [Ball, OldState]),
+	{A,B,C,D} = OldState#state.quadrants,
 	VLimit=50,
 	{DLo, DLimit}={20, 150},
 	[{X,Y}, {_X2,_Y2}]=gs:read(Ball, coords),
