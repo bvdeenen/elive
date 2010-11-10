@@ -9,7 +9,10 @@
 	quadrants=[],
 	generation=1,
 	pos,
-	size=2
+	size=2,
+	comm_pid,
+	ball_process,
+	generation_interval=50
 	}).
 
 init() ->
@@ -26,7 +29,7 @@ create_balls(_, _World, 0) ->
 	[];
 
 create_balls( Canvas, World, Nballs) ->
-	Pid = spawn(fun() -> create_ball(Canvas, World) end),
+	Pid = create_ball(Canvas, World),
 	[Pid | create_balls(Canvas, World, Nballs-1)].
 
 loop(Canvas, Pids) ->
@@ -59,15 +62,21 @@ create_ball(Canvas, World) ->
 	Pos = { rand_uniform(200,400), rand_uniform(200, 400) },
 	create_ball(Canvas, World, Pos).
 
+
+%% each ball consists of three processes:
+%% BallProcess: the process that makes a new generation every xx ms.
+%% ball_communicator: the process that communicates with others and the Canvas
+%% the ask_neighbour_info process that periodically checks the neighbours
 create_ball(Canvas, World, {X,Y}) ->
 	State=#state{pos={X,Y}},
 	Size = State#state.size, %% uses default value from recrd
-	Self=self(),
 	Color= State#state.color,
 	Ball=gs:oval(Canvas,[{coords,[{X-Size, Y-Size}, {X+Size,Y+Size}]},{fill,Color}]),
-	spawn_link( fun() -> ask_neighbour_info(Self, World) end ),
-	ball(Ball, World, State ).
-
+	BallCommunicator=spawn_link( fun() -> ball_communicator(State) end),
+	BallProcess=spawn_link( fun() -> ball(Ball, World, State#state{comm_pid=BallCommunicator}) end ),
+	BallCommunicator ! { set_ball_process, BallProcess},
+	spawn_link( fun() -> ask_neighbour_info(BallCommunicator, World) end ),
+	BallCommunicator.
 
 
 ball(Ball, World, OldState  ) ->
@@ -76,59 +85,80 @@ ball(Ball, World, OldState  ) ->
 	gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
 		{fill, OldState#state.color}]),
 
-	%% receive can lead to a state change
 	NewState = 
 	receive
 		die ->
-			%% io:format("~p being told to die~n", [self()]),
 			exit(normal);
-		{Pid, get_info} ->
-			Pid ! {self(), info, OldState},
-			OldState;
-		{neighbour_info, QuadrantInfo} ->
+		{neighbour_info, QuadrantInfo} when OldState#state.dsize > 0 ->
 			%io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
 			Limit=50,
 			QuadrantSum=lists:sum(QuadrantInfo),
 			if
 				QuadrantSum > 4 * Limit ->
 					io:format("~p stopped growing~n", [self()]),
-					OldState#state{dsize=0, color=green};
+					OldState#state{generation_interval=500, dsize=0, color=green};
 				true ->
 					OldState#state{quadrants=QuadrantInfo}
-			end;
-		Message ->
-			io:format("~p received unexpected ~p~n", [self(), Message]),
-			OldState
-	after 50 ->
+			end
+	after OldState#state.generation_interval ->
 		OldState
 	end,
+	%% NewState is now set
+
+	%% check if the size has reached the maximum value
 	NewState1=
 	if
-		Size > 20 -> NewState#state{dsize=0, color=blue};
+		Size > 20 -> NewState#state{dsize=0, color=purple};
 		true -> NewState
 	end,
-	%% NewState is now set
 
 	R=rand_uniform(0,100) ,
 	if 
 		NewState#state.generation rem  30 =:= 0, 
-		NewState#state.color =:= red,
 		NewState#state.quadrants =/= [],
 		R > 80  ->
 			World ! { self(), split, NewState1 };
 		true ->
 			true
 	end,		
-	ball(Ball, World, NewState1#state{
+	NewState2=NewState1#state{
 		size=Size,
-		generation=OldState#state.generation+1}).
+		generation=OldState#state.generation+1}, 
+	%% tell BallCommunicator our new state
+	NewState2#state.comm_pid ! {update_state, NewState2},
+	ball(Ball, World, NewState2).
 
 
-ask_neighbour_info(Owner, World) ->
-
-	Owner ! { self(), get_info },
+ball_communicator(OldState) ->
+	NewState=
 	receive
-		{Owner, info, State} ->
+		die ->
+			%% io:format("~p being told to die~n", [self()]),
+			OldState#state.ball_process ! die,
+			exit(normal);
+		{set_ball_process, Pid} ->
+			OldState#state{ball_process=Pid};
+		{Pid, get_state} ->
+			Pid ! {self(), info, OldState},
+			OldState;
+		{neighbour_info, QuadrantInfo} when OldState#state.ball_process =/= undefined->
+			OldState#state.ball_process ! { neighbour_info, QuadrantInfo },
+			OldState;
+		{update_state, State} ->
+			State#state{ball_process=OldState#state.ball_process};
+		Message ->
+			io:format("ball_communicator ~p received unexpected ~p, ~nState=~p~n", 
+				[self(), Message, OldState])
+	end,
+	ball_communicator(NewState).
+	
+
+
+ask_neighbour_info(BallCommunicator, World) ->
+
+	BallCommunicator ! { self(), get_state },
+	receive
+		{BallCommunicator, info, State} ->
 			true
 	end,
 	Center=State#state.pos,
@@ -139,15 +169,18 @@ ask_neighbour_info(Owner, World) ->
 			true
 	end,
 
-	Others=lists:filter(fun(Pid) -> Pid =/= Owner end, Pids),
-	lists:map(fun(Pid) -> Pid ! {self(), get_info} end, Others),
+	Others=lists:filter(fun(Pid) -> Pid =/= BallCommunicator end, Pids),
+	lists:map(fun(Pid) -> Pid ! {self(), get_state} end, Others),
+
+	%%Others=[fun() -> Pid ! {self(), get_state} end || Pid <- Pids, Pid =/= BallCommunicator],
+	%% io:format("ask_neighbour_info BallCommunicator=~p, Center=~p, Others=~p~n", [BallCommunicator,Center, Others]),
 	NeighbourInfo = collect_neighbour_info(Others),
 	%% io:format("NeighbourInfo=~p~n", [NeighbourInfo]),
 	QuadrantInfo=quadrant_info(NeighbourInfo, Center, 0, 0, 0, 0),
-	Owner ! {neighbour_info, QuadrantInfo},
+	BallCommunicator ! {neighbour_info, QuadrantInfo},
 	receive
 		after 1000 ->
-			ask_neighbour_info(Owner, World)
+			ask_neighbour_info(BallCommunicator, World)
 	end.
 
 quadrant_info([], _Center, A, B, C, D) ->
@@ -182,7 +215,7 @@ clone_ball(Canvas, OldState) ->
 	
 	{X,Y} = OldState#state.pos,
 
-	io:format("clone_ball quadrants = ~p~n", [ OldState#state.quadrants]),
+	%%io:format("clone_ball quadrants = ~p~n", [ OldState#state.quadrants]),
 	F=fun() -> rand_uniform(20, 50) end,
 
 	{DX,DY}=
@@ -203,7 +236,7 @@ clone_ball(Canvas, OldState) ->
 	Pid=
 	if 
 		DX =/= no_clone ->
-			P=spawn(fun() -> create_ball(Canvas, World, {X+DX, Y+DY}) end),
+			P=create_ball(Canvas, World, {X+DX, Y+DY}),
 			io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
 			P;
 		true ->
@@ -218,7 +251,6 @@ collect_neighbour_info([H|T]) ->
 		{H, info, State} ->
 			[{State#state.pos, State#state.size} | collect_neighbour_info(T)]
 	end.
-
 
 
 
