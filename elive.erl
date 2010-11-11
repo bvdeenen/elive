@@ -12,7 +12,9 @@
 	size=2,
 	comm_pid,
 	ball_process,
-	generation_interval=50
+	generation_interval=50,
+	generation_die=250,
+	generation_split=20
 	}).
 
 init() ->
@@ -49,6 +51,9 @@ loop(Canvas, Pids) ->
 				false -> loop(Canvas, Pids)	;
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] )
 			end	;
+		{old_age_death, Pid} ->
+			%% io:format("~p died of old age~n", [Pid]),
+			loop(Canvas, lists:delete(Pid, Pids));
 		Message ->
 			io:format("Canvas got unexpected ~p~n", [Message]),
 			loop(Canvas, Pids)
@@ -90,13 +95,14 @@ ball(Ball, World, OldState  ) ->
 		die ->
 			exit(normal);
 		{neighbour_info, QuadrantInfo} when OldState#state.dsize > 0 ->
-			%io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
-			Limit=50,
-			QuadrantSum=lists:sum(QuadrantInfo),
+			%% io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
+			Limit=20,
+			%% QuadrantSum=lists:sum(QuadrantInfo),
+			AllQuadrantsFull = lists:all( fun(QI) -> QI > Limit end, QuadrantInfo) ,
 			if
-				QuadrantSum > 4 * Limit ->
-					io:format("~p stopped growing~n", [self()]),
-					OldState#state{generation_interval=500, dsize=0, color=green};
+				AllQuadrantsFull ->
+					%% io:format("~p stopped growing~n", [self()]),
+					OldState#state{dsize=0, color=green};
 				true ->
 					OldState#state{quadrants=QuadrantInfo}
 			end
@@ -114,9 +120,9 @@ ball(Ball, World, OldState  ) ->
 
 	R=rand_uniform(0,100) ,
 	if 
-		NewState#state.generation rem  30 =:= 0, 
+		NewState#state.generation >  NewState#state.generation_split ,
 		NewState#state.quadrants =/= [],
-		R > 80  ->
+		R > 95  ->
 			World ! { self(), split, NewState1 };
 		true ->
 			true
@@ -126,8 +132,14 @@ ball(Ball, World, OldState  ) ->
 		generation=OldState#state.generation+1}, 
 	%% tell BallCommunicator our new state
 	NewState2#state.comm_pid ! {update_state, NewState2},
-	ball(Ball, World, NewState2).
-
+	if 	
+		NewState2#state.generation  < NewState2#state.generation_die ->
+			ball(Ball, World, NewState2);
+		true->
+			gs:destroy(Ball),
+			World ! {old_age_death, NewState2#state.comm_pid },
+			exit(normal)
+	end.  
 
 ball_communicator(OldState) ->
 	NewState=
@@ -237,7 +249,7 @@ clone_ball(Canvas, OldState) ->
 	if 
 		DX =/= no_clone ->
 			P=create_ball(Canvas, World, {X+DX, Y+DY}),
-			io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
+			%% io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
 			P;
 		true ->
 			false
