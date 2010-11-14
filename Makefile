@@ -7,14 +7,14 @@
 	erlc -W $<
 
 ERL = erl -boot start_clean
-MODS = elive
+MODS = elive ball
 
 all: compile
 
 compile: ${MODS:%=%.beam}
 
-world: compile
-	${ERL} -pa ~/elive/ -s worldrunner main 2
+run: compile
+	${ERL} -s elive init
 
 clean:
 	rm -rf *.beam erl_crash.dump
