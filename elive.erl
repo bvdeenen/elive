@@ -1,5 +1,5 @@
 -module(elive).
--compile(export_all).
+-export([init/0]).
 
 -import(crypto, [rand_uniform/2, start/0]).
 
@@ -24,27 +24,37 @@ init() ->
 	Canvas= gs:canvas(W,[{width,600},{height,600},{bg,yellow}]),
 	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
 	Pids = create_balls(Canvas, self(), _Nballs=4),
+	World=self(),
+	spawn_link(fun() -> statistics_process(World) end),
 	loop(Canvas, Pids),
 	gs:stop().
 
+statistics_process(World) ->
+	receive
+	after 5000 -> true
+	end,
+	World ! {self(), give_pids},
+	receive
+		{World, Pids} ->
+			io:format("~p balls~n", [length(Pids)])
+	end,
+	statistics_process(World).
+	
 create_balls(_, _World, 0) ->
 	[];
 
 create_balls( Canvas, World, Nballs) ->
-	Pid = create_ball(Canvas, World),
-	[Pid | create_balls(Canvas, World, Nballs-1)].
+	[create_ball(Canvas, World) | create_balls(Canvas, World, Nballs-1)].
 
 loop(Canvas, Pids) ->
 	receive
-		{Pid, give_pids} ->
+		{Pid, give_pids} -> 
 			Pid ! {self(), Pids},
 			loop(Canvas, Pids);
 		{gs,_,destroy,_,_} ->
 			quit_balls(Pids);
 		{gs,quit,click,_,_} ->
 			quit_balls(Pids);
-		{gs, A, B, C, D} ->
-			io:format("GS message ~p ~p ~p ~p~n", [A,B,C,D]);
 		{ _Pid, split, OldState } ->
 			Pid1=clone_ball(Canvas, OldState) ,
 			case Pid1 of
@@ -105,6 +115,20 @@ ball(Ball, World, OldState  ) ->
 					OldState#state{dsize=0, color=green};
 				true ->
 					OldState#state{quadrants=QuadrantInfo}
+			end;
+		{neighbour_info, QuadrantInfo} when OldState#state.dsize =:= 0 ->
+			%% io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
+			Limit=20,
+			%% QuadrantSum=lists:sum(QuadrantInfo),
+			AllQuadrantsFull = lists:all( fun(QI) -> QI > Limit end, QuadrantInfo) ,
+			if
+				AllQuadrantsFull =:= false ->
+					DefaultState=#state{},
+					io:format("~p started growing again~n", [self()]),
+					OldState#state{dsize=DefaultState#state.dsize, 
+						color=DefaultState#state.color};
+				true ->
+					OldState#state{quadrants=QuadrantInfo}
 			end
 	after OldState#state.generation_interval ->
 		OldState
@@ -132,8 +156,10 @@ ball(Ball, World, OldState  ) ->
 		generation=OldState#state.generation+1}, 
 	%% tell BallCommunicator our new state
 	NewState2#state.comm_pid ! {update_state, NewState2},
+	R2=rand_uniform(0,100) ,
 	if 	
-		NewState2#state.generation  < NewState2#state.generation_die ->
+		NewState2#state.generation  < NewState2#state.generation_die ;
+		R2 < 95 ->
 			ball(Ball, World, NewState2);
 		true->
 			gs:destroy(Ball),
@@ -200,10 +226,12 @@ quadrant_info([], _Center, A, B, C, D) ->
 
 quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
 
-	Limit=150,
+	Limit=50,
 	if
 		X0 < 30;
 		Y0 < 30;
+		X0 > 500;
+		Y0 > 500;
 		X1 < (X0-Limit);
 		X1 > (X0+Limit);
 		Y1 < (Y0-Limit);
