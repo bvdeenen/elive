@@ -7,7 +7,7 @@
 	erlc -W $<
 
 ERL = erl -boot start_clean
-MODS = elive ball
+MODS = elive ball statistics_process
 
 all: compile
 

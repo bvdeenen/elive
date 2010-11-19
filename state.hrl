@@ -12,3 +12,5 @@
 	generation_split=20
 	}).
 
+-define(WORLDSIZE, 600).
+-define(GRIDSIZE, 50).

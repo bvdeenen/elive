@@ -2,32 +2,25 @@
 -export([init/0]).
 
 -import(crypto, [rand_uniform/2, start/0]).
+-import(statistics_process).
 
 -include("state.hrl").
+
+
 
 
 init() ->
 	crypto:start(),
 	I= gs:start(),
-	W= gs:window(I,[{title,"Ball"},{width,600},{height,600},{map,true}]),
-	Canvas= gs:canvas(W,[{width,600},{height,600},{bg,yellow}]),
+	W= gs:window(I,[{title,"Ball"},{width,?WORLDSIZE},{height,?WORLDSIZE},{map,true}]),
+	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,yellow}]),
 	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
 	Pids = ball:create_balls(Canvas, self(), _Nballs=4),
 	World=self(),
-	spawn_link(fun() -> statistics_process(World) end),
+	spawn_link(fun() -> statistics_process:start(World) end),
 	loop(Canvas, Pids),
 	gs:stop().
 
-statistics_process(World) ->
-	receive
-	after 5000 -> true
-	end,
-	World ! {self(), give_pids},
-	receive
-		{World, Pids} ->
-			io:format("~p balls~n", [length(Pids)])
-	end,
-	statistics_process(World).
 	
 loop(Canvas, Pids) ->
 	receive
