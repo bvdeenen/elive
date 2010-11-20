@@ -109,7 +109,7 @@ handle_grid_info(World, Grid, State) ->
 
 
 clone_ball(Canvas, OldState) ->
-	F=fun() -> rand_uniform(20, 50) end,
+	F=fun() -> rand_uniform(20, ?GRIDSIZE) end,
 	I=rand_uniform(0,4),
 
 	{DX,DY}=

@@ -20,6 +20,7 @@ start(World) ->
 	Grid=grid(State, array:new([ {size, S}, {default,0}])),
 	%% notify all comm processes of Grid
 	lists:map(fun(St) -> notify(St, Grid) end, State),
+	World ! {grid_info, Grid},
 	start(World).
 
 notify({Pid, _Pos,  _Size}, Grid) ->
