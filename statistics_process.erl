@@ -15,18 +15,16 @@ start(World) ->
 	end,
 	%% ask all balls for state
 	lists:map(fun(Pid) -> Pid ! {self(), get_state} end, Pids),
-	State = collect_neighbour_info( Pids),
+	State = collect_states( Pids),
 	S=?WORLDSIZE * ?WORLDSIZE div (?GRIDSIZE * ?GRIDSIZE),
-	%% io:format("State=~p~n", [State]),
 	Grid=grid(State, array:new([ {size, S}, {default,0}])),
-	%% io:format("Grid = ~p~n", [Grid]),
+	%% notify all comm processes of Grid
 	lists:map(fun(St) -> notify(St, Grid) end, State),
 	start(World).
 
-notify({Pid, {_X,_Y}, _Size}, Grid) ->
+notify({Pid, _Pos,  _Size}, Grid) ->
 	Pid ! {self(), grid_info, Grid}.
 	
-
 grid([], Grid) -> Grid;
 
 grid([{_Pid, {X,Y}, Size}| Tail], Grid) ->
@@ -43,15 +41,15 @@ grid([{_Pid, {X,Y}, Size}| Tail], Grid) ->
 	grid(Tail, array:set(I, O+Size, Grid)).
 	
 	
-collect_neighbour_info([]) -> [] ;
+collect_states([]) -> [] ;
 
-collect_neighbour_info([Pid|T]) ->
+collect_states([Pid|T]) ->
 	receive
 		{Pid, info, State} ->
-			[{Pid, State#state.pos, State#state.size} | collect_neighbour_info(T)]
-	after 50 ->
-		io:format("~p died in between ~n", [Pid]),
-		collect_neighbour_info(T)
+			[{Pid, State#state.pos, State#state.size} | collect_states(T)]
+	after 20 ->
+		%% io:format("~p died in between ~n", [Pid]),
+		collect_states(T)
 	end.
 
 	

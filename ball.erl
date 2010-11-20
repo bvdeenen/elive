@@ -18,7 +18,6 @@ create_ball(Canvas, World) ->
 %% each ball consists of three processes:
 %% BallProcess: the process that makes a new generation every xx ms.
 %% ball_communicator: the process that communicates with others and the Canvas
-%% the ask_neighbour_info process that periodically checks the neighbours
 create_ball(Canvas, World, {X,Y}) ->
 	State=#state{pos={X,Y}},
 	Size = State#state.size, %% uses default value from recrd
@@ -64,11 +63,14 @@ ball(Ball, World, State, OldState  ) ->
 		true -> NewState
 	end,
 
+	%% increment generation counter
 	NewState2=NewState1#state{
 		size=Size,
 		generation=State#state.generation+1}, 
 	%% tell BallCommunicator our new state
 	NewState2#state.comm_pid ! {update_state, NewState2},
+
+	%% death ?
 	R2=rand_uniform(0,100) ,
 	if 	
 		NewState2#state.generation  < NewState2#state.generation_die ;
@@ -77,32 +79,10 @@ ball(Ball, World, State, OldState  ) ->
 		true->
 			gs:destroy(Ball),
 			World ! {old_age_death, NewState2#state.comm_pid },
+			NewState2#state.comm_pid ! die,
 			exit(normal)
 	end.  
 
-ball_communicator(OldState) ->
-	NewState=
-	receive
-		die ->
-			%% io:format("~p being told to die~n", [self()]),
-			OldState#state.ball_process ! die,
-			exit(normal);
-		{set_ball_process, Pid} ->
-			OldState#state{ball_process=Pid};
-		{Pid, get_state} ->
-			Pid ! {self(), info, OldState},
-			OldState;
-		{update_state, State} ->
-			State#state{ball_process=OldState#state.ball_process};
-		{_PidStatProcess, grid_info, Grid } ->
-			OldState#state.ball_process ! {grid_info, Grid},
-			OldState;
-		Message ->
-			io:format("ball_communicator ~p received unexpected ~p, ~nState=~p~n", 
-				[self(), Message, OldState])
-	end,
-	ball_communicator(NewState).
-	
 
 handle_grid_info(World, Grid, State) ->
 	{X,Y} = State#state.pos,
@@ -144,5 +124,28 @@ clone_ball(Canvas, OldState) ->
 	create_ball(Canvas, self(), {X+DX, Y+DY}).
 
 
+ball_communicator(OldState) ->
+	NewState=
+	receive
+		die ->
+			%% io:format("~p being told to die~n", [self()]),
+			OldState#state.ball_process ! die,
+			exit(normal);
+		{set_ball_process, Pid} ->
+			OldState#state{ball_process=Pid};
+		{Pid, get_state} ->
+			Pid ! {self(), info, OldState},
+			OldState;
+		{update_state, State} ->
+			State#state{ball_process=OldState#state.ball_process};
+		{_PidStatProcess, grid_info, Grid } ->
+			OldState#state.ball_process ! {grid_info, Grid},
+			OldState;
+		Message ->
+			io:format("ball_communicator ~p received unexpected ~p, ~nState=~p~n", 
+				[self(), Message, OldState])
+	end,
+	ball_communicator(NewState).
+	
 
 %% vim:tw=0

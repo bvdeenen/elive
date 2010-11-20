@@ -7,8 +7,6 @@
 -include("state.hrl").
 
 
-
-
 init() ->
 	crypto:start(),
 	I= gs:start(),
