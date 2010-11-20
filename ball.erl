@@ -25,51 +25,35 @@ create_ball(Canvas, World, {X,Y}) ->
 	Color= State#state.color,
 	Ball=gs:oval(Canvas,[{coords,[{X-Size, Y-Size}, {X+Size,Y+Size}]},{fill,Color}]),
 	BallCommunicator=spawn_link( fun() -> ball_communicator(State) end),
-	BallProcess=spawn_link( fun() -> ball(Ball, World, State#state{comm_pid=BallCommunicator}) end ),
+	BallProcess=spawn_link( fun() -> ball(Ball, World, 
+		State#state{comm_pid=BallCommunicator}, false) end ),
 	BallCommunicator ! { set_ball_process, BallProcess},
 	BallCommunicator.
 
 
-ball(Ball, World, OldState  ) ->
-	{X,Y}=OldState#state.pos,
-	Size = OldState#state.size + OldState#state.dsize,
-	gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
-		{fill, OldState#state.color}]),
+ball(Ball, World, State, OldState  ) ->
+	
+	{X,Y}=State#state.pos,
+	Size = State#state.size + State#state.dsize,
+	if 
+		OldState =/= false,
+		OldState#state.pos =/= State#state.pos;
+		OldState#state.size =/= State#state.size;
+		OldState#state.color =/= State#state.color ->
+			gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
+				{fill, State#state.color}]);
+		true ->
+			true
+	end,		
 
 	NewState = 
 	receive
 		die ->
 			exit(normal);
 		{grid_info, Grid } ->
-			handle_grid_info(World, Grid, OldState);
-		{neighbour_info, QuadrantInfo} when OldState#state.dsize > 0 ->
-			%% io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
-			Limit=20,
-			%% QuadrantSum=lists:sum(QuadrantInfo),
-			AllQuadrantsFull = lists:all( fun(QI) -> QI > Limit end, QuadrantInfo) ,
-			if
-				AllQuadrantsFull ->
-					%% io:format("~p stopped growing~n", [self()]),
-					OldState#state{dsize=0, color=green};
-				true ->
-					OldState#state{quadrants=QuadrantInfo}
-			end;
-		{neighbour_info, QuadrantInfo} when OldState#state.dsize =:= 0 ->
-			%% io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
-			Limit=20,
-			%% QuadrantSum=lists:sum(QuadrantInfo),
-			AllQuadrantsFull = lists:all( fun(QI) -> QI > Limit end, QuadrantInfo) ,
-			if
-				AllQuadrantsFull =:= false ->
-					DefaultState=#state{},
-					io:format("~p started growing again~n", [self()]),
-					OldState#state{dsize=DefaultState#state.dsize, 
-						color=DefaultState#state.color};
-				true ->
-					OldState#state{quadrants=QuadrantInfo}
-			end
-	after OldState#state.generation_interval ->
-		OldState
+			handle_grid_info(World, Grid, State)
+	after State#state.generation_interval ->
+		State
 	end,
 	%% NewState is now set
 
@@ -82,14 +66,14 @@ ball(Ball, World, OldState  ) ->
 
 	NewState2=NewState1#state{
 		size=Size,
-		generation=OldState#state.generation+1}, 
+		generation=State#state.generation+1}, 
 	%% tell BallCommunicator our new state
 	NewState2#state.comm_pid ! {update_state, NewState2},
 	R2=rand_uniform(0,100) ,
 	if 	
 		NewState2#state.generation  < NewState2#state.generation_die ;
 		R2 < 95 ->
-			ball(Ball, World, NewState2);
+			ball(Ball, World, NewState2, State);
 		true->
 			gs:destroy(Ball),
 			World ! {old_age_death, NewState2#state.comm_pid },
@@ -107,9 +91,6 @@ ball_communicator(OldState) ->
 			OldState#state{ball_process=Pid};
 		{Pid, get_state} ->
 			Pid ! {self(), info, OldState},
-			OldState;
-		{neighbour_info, QuadrantInfo} when OldState#state.ball_process =/= undefined->
-			OldState#state.ball_process ! { neighbour_info, QuadrantInfo },
 			OldState;
 		{update_state, State} ->
 			State#state{ball_process=OldState#state.ball_process};
@@ -130,6 +111,9 @@ handle_grid_info(World, Grid, State) ->
 	
 	R=rand_uniform(0,100) ,
 	if 
+		V > 100 ->
+			State#state{dsize=0, color=green};
+			
 		State#state.generation >  State#state.generation_split ,
 		X > ?GRIDSIZE,
 		Y > ?GRIDSIZE,
@@ -137,44 +121,27 @@ handle_grid_info(World, Grid, State) ->
 		Y < ?WORLDSIZE - ?GRIDSIZE,
 		V < 100,
 		R > 75  ->
-			World ! { self(), split, State };
+			World ! { self(), split, State },
+			State;
 		true ->
-			true
-	end,
-	State.		
-
-	
-
+			State
+	end.
 
 
 clone_ball(Canvas, OldState) ->
 	F=fun() -> rand_uniform(20, 50) end,
-	I=rand_uniform(0,3),
-	{X,Y}=OldState#state.pos,
+	I=rand_uniform(0,4),
 
 	{DX,DY}=
-			case I of 
-				0 -> {-F(), -F() } ;
-				1 -> {-F(),  F() } ;
-				2 -> { F(), -F() } ;
-				3 -> { F(),  F() } ;
-				true -> { 0, 0}
-			end	,
-
-	World = self(),
-	Pid=
-	if 
-		DX =/= no_clone ->
-			P=create_ball(Canvas, World, {X+DX, Y+DY}),
-			%% io:format("new ball at ~p,~p~n", [X+DX, Y+DY]),
-			P;
-		true ->
-			false
-	end,
-	Pid.
-
-
-
+	case I of 
+		0 -> {-F(), -F() } ;
+		1 -> {-F(),  F() } ;
+		2 -> { F(), -F() } ;
+		3 -> { F(),  F() } ;
+		true -> { 0, 0}
+	end	,
+	{X,Y}=OldState#state.pos,
+	create_ball(Canvas, self(), {X+DX, Y+DY}).
 
 
 
