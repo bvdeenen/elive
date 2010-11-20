@@ -27,7 +27,6 @@ create_ball(Canvas, World, {X,Y}) ->
 	BallCommunicator=spawn_link( fun() -> ball_communicator(State) end),
 	BallProcess=spawn_link( fun() -> ball(Ball, World, State#state{comm_pid=BallCommunicator}) end ),
 	BallCommunicator ! { set_ball_process, BallProcess},
-	spawn_link( fun() -> ask_neighbour_info(BallCommunicator, World) end ),
 	BallCommunicator.
 
 
@@ -41,6 +40,8 @@ ball(Ball, World, OldState  ) ->
 	receive
 		die ->
 			exit(normal);
+		{grid_info, Grid } ->
+			handle_grid_info(World, Grid, OldState);
 		{neighbour_info, QuadrantInfo} when OldState#state.dsize > 0 ->
 			%% io:format("~p Received neighbour_info= ~p ~n", [self(), QuadrantInfo]),
 			Limit=20,
@@ -79,15 +80,6 @@ ball(Ball, World, OldState  ) ->
 		true -> NewState
 	end,
 
-	R=rand_uniform(0,100) ,
-	if 
-		NewState#state.generation >  NewState#state.generation_split ,
-		NewState#state.quadrants =/= [],
-		R > 95  ->
-			World ! { self(), split, NewState1 };
-		true ->
-			true
-	end,		
 	NewState2=NewState1#state{
 		size=Size,
 		generation=OldState#state.generation+1}, 
@@ -121,6 +113,9 @@ ball_communicator(OldState) ->
 			OldState;
 		{update_state, State} ->
 			State#state{ball_process=OldState#state.ball_process};
+		{_PidStatProcess, grid_info, Grid } ->
+			OldState#state.ball_process ! {grid_info, Grid},
+			OldState;
 		Message ->
 			io:format("ball_communicator ~p received unexpected ~p, ~nState=~p~n", 
 				[self(), Message, OldState])
@@ -128,86 +123,43 @@ ball_communicator(OldState) ->
 	ball_communicator(NewState).
 	
 
-
-ask_neighbour_info(BallCommunicator, World) ->
-
-	BallCommunicator ! { self(), get_state },
-	receive
-		{BallCommunicator, info, State} ->
+handle_grid_info(World, Grid, State) ->
+	{X,Y} = State#state.pos,
+	I=gridindex(X,Y),
+	V=array:get(I, Grid),
+	
+	R=rand_uniform(0,100) ,
+	if 
+		State#state.generation >  State#state.generation_split ,
+		X > ?GRIDSIZE,
+		Y > ?GRIDSIZE,
+		X < ?WORLDSIZE - ?GRIDSIZE,
+		Y < ?WORLDSIZE - ?GRIDSIZE,
+		V < 100,
+		R > 75  ->
+			World ! { self(), split, State };
+		true ->
 			true
 	end,
-	Center=State#state.pos,
+	State.		
 
-	World ! { self(), give_pids },
-	receive
-		{World, Pids} ->
-			true
-	end,
+	
 
-	Others=lists:filter(fun(Pid) -> Pid =/= BallCommunicator end, Pids),
-	lists:map(fun(Pid) -> Pid ! {self(), get_state} end, Others),
-
-	%%Others=[fun() -> Pid ! {self(), get_state} end || Pid <- Pids, Pid =/= BallCommunicator],
-	%% io:format("ask_neighbour_info BallCommunicator=~p, Center=~p, Others=~p~n", [BallCommunicator,Center, Others]),
-	NeighbourInfo = collect_neighbour_info(Others),
-	%% io:format("NeighbourInfo=~p~n", [NeighbourInfo]),
-	QuadrantInfo=quadrant_info(NeighbourInfo, Center, 0, 0, 0, 0),
-	BallCommunicator ! {neighbour_info, QuadrantInfo},
-	receive
-		after 1000 ->
-			ask_neighbour_info(BallCommunicator, World)
-	end.
-
-quadrant_info([], _Center, A, B, C, D) ->
-	[A, B, C, D];
-
-quadrant_info([{{X1,Y1}, OtherSize}|T], Center={X0,Y0}, A, B, C, D) ->
-
-	Limit=50,
-	if
-		X0 < 30;
-		Y0 < 30;
-		X0 > 500;
-		Y0 > 500;
-		X1 < (X0-Limit);
-		X1 > (X0+Limit);
-		Y1 < (Y0-Limit);
-		Y1 > (Y0+Limit) -> quadrant_info(T, Center, A,B,C,D);
-
-		X1 < X0  , Y1 < Y0 -> quadrant_info(T  , Center , A+OtherSize , B           , C           , D);
-		X1 < X0  , Y1 >= Y0 -> quadrant_info(T , Center , A           , B+OtherSize , C           , D);
-		X1 >= X0 , Y1 <Y0 -> quadrant_info(T   , Center , A           , B           , C+OtherSize , D);
-		X1 >= X0 , Y1 >= Y0 -> quadrant_info(T , Center , A           , B           , C           , D+OtherSize);
-		true -> 999
-	end.
 
 
 clone_ball(Canvas, OldState) ->
-	Z=lists:zip( lists:seq(0,3), OldState#state.quadrants ),
-	VLimit=50,
-	SortF=fun({_N0, Q0},{_N1, Q1}) -> Q0 < Q1 end,
-	Z1=lists:sort(SortF, Z),
-
-	{I, Q} =lists:nth(1,Z1),
-	
-	{X,Y} = OldState#state.pos,
-
-	%%io:format("clone_ball quadrants = ~p~n", [ OldState#state.quadrants]),
 	F=fun() -> rand_uniform(20, 50) end,
+	I=rand_uniform(0,3),
+	{X,Y}=OldState#state.pos,
 
 	{DX,DY}=
-	if 
-		Q < VLimit -> 
 			case I of 
 				0 -> {-F(), -F() } ;
 				1 -> {-F(),  F() } ;
 				2 -> { F(), -F() } ;
 				3 -> { F(),  F() } ;
 				true -> { 0, 0}
-			end	;
-		true ->
-			{no_clone, no_clone}
-		end,
+			end	,
 
 	World = self(),
 	Pid=
@@ -220,14 +172,6 @@ clone_ball(Canvas, OldState) ->
 			false
 	end,
 	Pid.
-
-collect_neighbour_info([]) -> [] ;
-
-collect_neighbour_info([H|T]) ->
-	receive
-		{H, info, State} ->
-			[{State#state.pos, State#state.size} | collect_neighbour_info(T)]
-	end.
 
 
 

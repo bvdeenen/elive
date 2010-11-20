@@ -32,12 +32,16 @@ loop(Canvas, Pids) ->
 		{gs,quit,click,_,_} ->
 			quit_balls(Pids);
 		{ _Pid, split, OldState } ->
+			%% io:format("~p asking for clone,~n~p~n", [_Pid, OldState]),
 			Pid1=ball:clone_ball(Canvas, OldState) ,
 			case Pid1 of
 				false -> loop(Canvas, Pids)	;
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] )
 			end	;
 		{old_age_death, Pid} ->
+			%% io:format("~p died of old age~n", [Pid]),
+			loop(Canvas, lists:delete(Pid, Pids));
+		{'EXIT', Pid, normal } ->	
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids));
 		Message ->

@@ -14,3 +14,7 @@
 
 -define(WORLDSIZE, 600).
 -define(GRIDSIZE, 50).
+
+gridindex(X,Y) ->
+	(X div ?GRIDSIZE) + (Y div ?GRIDSIZE) * (?WORLDSIZE div ?GRIDSIZE).
+
