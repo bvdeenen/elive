@@ -73,10 +73,12 @@ ball(Ball, World, State, OldState  ) ->
 	%% death ?
 	R2=rand_uniform(0,100) ,
 	if 	
+		%% keep living if not too old
+		%% otherwise 5% chance of dying
 		NewState2#state.generation  < NewState2#state.generation_die ;
 		R2 < 95 ->
 			ball(Ball, World, NewState2, State);
-		true->
+		true-> %% ball dies
 			gs:destroy(Ball),
 			World ! {old_age_death, NewState2#state.comm_pid },
 			NewState2#state.comm_pid ! die,
@@ -86,7 +88,7 @@ ball(Ball, World, State, OldState  ) ->
 
 handle_grid_info(World, Grid, State) ->
 	{X,Y} = State#state.pos,
-	I=gridindex(X,Y),
+	I=?gridindex(X,Y),
 	V=array:get(I, Grid),
 	
 	R=rand_uniform(0,100) ,
@@ -100,7 +102,7 @@ handle_grid_info(World, Grid, State) ->
 		X < ?WORLDSIZE - ?GRIDSIZE,
 		Y < ?WORLDSIZE - ?GRIDSIZE,
 		V < 100,
-		R > 75  ->
+		R > 75  -> %% 25% chance of cloning
 			World ! { self(), split, State },
 			State;
 		true ->

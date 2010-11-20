@@ -1,7 +1,6 @@
 -record(state, {
 	color=red,
 	dsize=0.1,
-	quadrants=[],
 	generation=1,
 	pos,
 	size=2,
@@ -12,9 +11,24 @@
 	generation_split=20
 	}).
 
+-record(gstate, {
+	color=yellow,
+	generation=1,
+	pos,
+	lsize=20,
+	wsize=7,
+	speed=1,
+	direction=0,
+	comm_pid,
+	grazer_process,
+	generation_interval=250,
+	generation_die=250,
+	generation_split=20
+	}).
+
 -define(WORLDSIZE, 600).
 -define(GRIDSIZE, 50).
 
-gridindex(X,Y) ->
-	(X div ?GRIDSIZE) + (Y div ?GRIDSIZE) * (?WORLDSIZE div ?GRIDSIZE).
+-define(gridindex(X,Y), 
+	(X div ?GRIDSIZE) + (Y div ?GRIDSIZE) * (?WORLDSIZE div ?GRIDSIZE)).
 

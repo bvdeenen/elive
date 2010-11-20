@@ -29,7 +29,7 @@ notify({Pid, _Pos,  _Size}, Grid) ->
 grid([], Grid) -> Grid;
 
 grid([{_Pid, {X,Y}, Size}| Tail], Grid) ->
-	I=gridindex(X,Y),
+	I=?gridindex(X,Y),
 	%% io:format("I=~p~n", [I]),
 	O=
 	try 

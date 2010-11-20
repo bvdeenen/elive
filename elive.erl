@@ -3,6 +3,7 @@
 
 -import(crypto, [rand_uniform/2, start/0]).
 -import(statistics_process).
+-import(grazer).
 
 -include("state.hrl").
 
@@ -11,9 +12,12 @@ init() ->
 	crypto:start(),
 	I= gs:start(),
 	W= gs:window(I,[{title,"Ball"},{width,?WORLDSIZE},{height,?WORLDSIZE},{map,true}]),
-	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,yellow}]),
+	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,white}]),
 	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
 	Pids = ball:create_balls(Canvas, self(), _Nballs=4),
+
+	grazer:create_grazers(Canvas, self(), _NGrazers=8),
+
 	World=self(),
 	spawn_link(fun() -> statistics_process:start(World) end),
 	loop(Canvas, Pids, false),

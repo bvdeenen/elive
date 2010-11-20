@@ -7,7 +7,7 @@
 	erlc -W $<
 
 ERL = erl -boot start_clean
-MODS = elive ball statistics_process
+MODS = elive ball statistics_process grazer
 
 all: compile
 
