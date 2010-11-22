@@ -21,7 +21,7 @@
 	direction=0,
 	comm_pid,
 	grazer_process,
-	generation_interval=100,
+	generation_interval=200,
 	generation_die=250,
 	generation_split=20
 	}).

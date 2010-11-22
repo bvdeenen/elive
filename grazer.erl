@@ -64,7 +64,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 		State
 	end,
 	if 
-		State#gstate.generation rem 2 =:= 0 ->
+		State#gstate.generation rem 5 =:= 0 ->
 			World ! {self(), grid_info};
 		true ->
 			true
@@ -130,15 +130,13 @@ determine_direction(X, Y, _V, Grid, State) ->
 		end,
 		{Dir, V2}
 	end,
-
 	A=lists:map(F, Offsets),
-
 	FSort=fun({_Dir1, W1}, {_Dir2,W2} ) -> W1 >= W2 end,
 
 	{Dir, B}=lists:nth(1, lists:sort(FSort, A)),
 	NewDirection=math:pi() * 2 * Dir / 8, %% 4 quadrants, 
 		
-	io:format("Dir=~p, B=~p, NewDirection=~p~n", [Dir, B, NewDirection]),
+	%% io:format("Dir=~p, B=~p, NewDirection=~p~n", [Dir, B, NewDirection]),
 
 	State#gstate{direction=NewDirection}.
 

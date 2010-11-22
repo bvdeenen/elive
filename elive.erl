@@ -14,9 +14,9 @@ init() ->
 	W= gs:window(I,[{title,"Ball"},{width,?WORLDSIZE},{height,?WORLDSIZE},{map,true}]),
 	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,white}]),
 	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
-	Pids = ball:create_balls(Canvas, self(), _Nballs=4),
+	Pids = ball:create_balls(Canvas, self(), _Nballs=40),
 
-	grazer:create_grazers(Canvas, self(), _NGrazers=8),
+	grazer:create_grazers(Canvas, self(), _NGrazers=40),
 
 	World=self(),
 	spawn_link(fun() -> statistics_process:start(World) end),
@@ -49,9 +49,7 @@ loop(Canvas, Pids, GridInfo) ->
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
 		{eaten, I, Pid} ->
-			io:format("~p (I=~p) got eaten, X=~p~n", [Pid,I, array:get(I,GridInfo)]),
 			{V, CellPids}=array:get(I, GridInfo),
-			io:format("V=~p, CellPids=~p~n", [V, CellPids]),
 			%% TODO must also lower V appropriate value
 			GN=array:set(I, {V, lists:delete(Pid, CellPids)}, GridInfo),
 			loop(Canvas, lists:delete(Pid, Pids), GN);
