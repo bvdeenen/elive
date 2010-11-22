@@ -48,6 +48,13 @@ loop(Canvas, Pids, GridInfo) ->
 		{old_age_death, Pid} ->
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
+		{eaten, I, Pid} ->
+			io:format("~p (I=~p) got eaten, X=~p~n", [Pid,I, array:get(I,GridInfo)]),
+			{V, CellPids}=array:get(I, GridInfo),
+			io:format("V=~p, CellPids=~p~n", [V, CellPids]),
+			%% TODO must also lower V appropriate value
+			GN=array:set(I, {V, lists:delete(Pid, CellPids)}, GridInfo),
+			loop(Canvas, lists:delete(Pid, Pids), GN);
 		{'EXIT', Pid, normal } ->	
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);

@@ -58,7 +58,6 @@ grazer(Grazer, World, State, _OldState  ) ->
 	receive
 		die ->
 			exit(normal);
-		
 		{grid_info, Grid } when Grid =/= false ->
 			handle_grid_info(World, Grid, State)
 	after State#gstate.generation_interval ->
@@ -71,8 +70,8 @@ grazer(Grazer, World, State, _OldState  ) ->
 			true
 	end,		
 	%% NewState is now set
-	Cos=math:cos(State#gstate.direction),
-	Sin=math:sin(State#gstate.direction),
+	Cos=math:cos(NewState#gstate.direction),
+	Sin=math:sin(NewState#gstate.direction),
 
 	{X,Y}=State#gstate.pos,
 	X1=X+State#gstate.speed * Cos,
@@ -83,14 +82,14 @@ grazer(Grazer, World, State, _OldState  ) ->
 	%% increment generation counter
 	NewState2=NewState#gstate{
 		pos={X1,Y1},
-		direction = State#gstate.direction + RandDeltaDirection(),
+		direction = NewState#gstate.direction + RandDeltaDirection(),
 		generation=State#gstate.generation+1}, 
 	%% tell GrazerCommunicator our new gstate
 	NewState2#gstate.comm_pid ! {update_state, NewState2},
 	grazer(Grazer, World, NewState2, State).
 
 
-handle_grid_info(_World, Grid, State) ->
+handle_grid_info(World, Grid, State) ->
 
 	{X,Y} = State#gstate.pos,
 	I=?gridindex(X,Y),
@@ -103,20 +102,52 @@ handle_grid_info(_World, Grid, State) ->
 	end,
 
 	if 
-		V =/= 0 ->
-			eat_one(V,Pids);
+		V =/= 0 , Pids =/= []->
+			eat_one(World, V,Pids, I),
+			determine_direction(X,Y,V,Grid, State);
 		true ->
-			true
+			State
 
-	end,	
-	State.
+	end.	
 
-eat_one(V, Pids) ->
-	I=rand_uniform(1,1+length(Pids)),
-	Pid=lists:nth(I, Pids),
-	io:format("Grazer ~p eats ball ~p~n", [self(), Pid]),
-	Pid ! die.
-	
+
+determine_direction(X, Y, _V, Grid, State) ->
+	Offsets=[
+		{0, 1, 0}, {1, 1, -1}, {2, 0, -1}, {3, -1, -1},
+		{4, -1, 0}, {5, -1, 1}, {6, 0, 1}, {7, 1, 1} ],
+	L=array:size(Grid),	
+	%% io:format("X=~p, Y=~p, V=~p, Grid=~p, State=~p~n", [X, Y, V, Grid, State]),
+	F=fun({Dir, Xo, Yo}) ->
+		X1=X+Xo * ?GRIDSIZE,
+		Y1=Y+Yo * ?GRIDSIZE,
+		I=?gridindex(X1, Y1),
+		{V2, _Pids}=
+		if
+			I >=0, I<L ->
+				array:get(I,Grid);
+			true ->
+				{0,[]}
+		end,
+		{Dir, V2}
+	end,
+
+	A=lists:map(F, Offsets),
+
+	FSort=fun({_Dir1, W1}, {_Dir2,W2} ) -> W1 >= W2 end,
+
+	{Dir, B}=lists:nth(1, lists:sort(FSort, A)),
+	NewDirection=math:pi() * 2 * Dir / 8, %% 4 quadrants, 
+		
+	io:format("Dir=~p, B=~p, NewDirection=~p~n", [Dir, B, NewDirection]),
+
+	State#gstate{direction=NewDirection}.
+
+
+eat_one(World, V, Pids, GridIndex) ->
+		I=rand_uniform(1,1+length(Pids)),
+		Pid=lists:nth(I, Pids),
+		Pid ! die,
+		World ! {eaten, GridIndex, Pid}.
 
 clone_grazer(Canvas, OldState) ->
 	F=fun() -> rand_uniform(20, ?GRIDSIZE) end,
