@@ -15,13 +15,13 @@
 	color=yellow,
 	generation=1,
 	pos,
-	lsize=40,
-	wsize=12,
+	lsize=20,
+	wsize=7,
 	speed=1,
 	direction=0,
 	comm_pid,
 	grazer_process,
-	generation_interval=250,
+	generation_interval=100,
 	generation_die=250,
 	generation_split=20
 	}).

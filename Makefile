@@ -11,7 +11,7 @@ MODS = elive ball statistics_process grazer
 
 all: compile
 
-compile: ${MODS:%=%.beam}
+compile: ${MODS:%=%.beam} 
 
 run: compile
 	${ERL} -s elive init

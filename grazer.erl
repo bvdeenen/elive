@@ -65,7 +65,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 		State
 	end,
 	if 
-		State#gstate.generation rem 5 =:= 0 ->
+		State#gstate.generation rem 2 =:= 0 ->
 			World ! {self(), grid_info};
 		true ->
 			true
@@ -104,13 +104,19 @@ handle_grid_info(_World, Grid, State) ->
 
 	if 
 		V =/= 0 ->
-			io:format("V=~p Pids=~p~n", [V, Pids]);
+			eat_one(V,Pids);
 		true ->
 			true
 
 	end,	
 	State.
 
+eat_one(V, Pids) ->
+	I=rand_uniform(1,1+length(Pids)),
+	Pid=lists:nth(I, Pids),
+	io:format("Grazer ~p eats ball ~p~n", [self(), Pid]),
+	Pid ! die.
+	
 
 clone_grazer(Canvas, OldState) ->
 	F=fun() -> rand_uniform(20, ?GRIDSIZE) end,
