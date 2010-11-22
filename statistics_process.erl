@@ -17,7 +17,7 @@ start(World) ->
 	lists:map(fun(Pid) -> Pid ! {self(), get_state} end, Pids),
 	State = collect_states( Pids),
 	S=?WORLDSIZE * ?WORLDSIZE div (?GRIDSIZE * ?GRIDSIZE),
-	Grid=grid(State, array:new([ {size, S}, {default,0}])),
+	Grid=grid(State, array:new([ {size, S}, {default,{0, []}}])),
 	%% notify all comm processes of Grid
 	lists:map(fun(St) -> notify(St, Grid) end, State),
 	World ! {grid_info, Grid},
@@ -28,18 +28,11 @@ notify({Pid, _Pos,  _Size}, Grid) ->
 	
 grid([], Grid) -> Grid;
 
-grid([{_Pid, {X,Y}, Size}| Tail], Grid) ->
+grid([{Pid, {X,Y}, Size}| Tail], Grid) ->
 	I=?gridindex(X,Y),
 	%% io:format("I=~p~n", [I]),
-	O=
-	try 
-		array:get(I, Grid)
-	catch
-		_:Error -> io:format("array:get error ~p, with I=~p (X,Y)=(~p~p) and array size=~p~n", 
-			[Error,I, X,Y, array:size(Grid)]),
-		0 %% zero
-	end	,
-	grid(Tail, array:set(I, O+Size, Grid)).
+	{O, Pids} = array:get(I, Grid),
+	grid(Tail, array:set(I, {O+Size, [Pid|Pids]}, Grid)).
 	
 	
 collect_states([]) -> [] ;

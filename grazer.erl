@@ -52,17 +52,24 @@ grazer(Grazer, World, State, _OldState  ) ->
 	
 	
 	gs:config(Grazer, [{coords, coords(State)},
-	{fill, State#gstate.color}]),
+	{fill, State#gstate.color}, raise]),
 
 	NewState = 
 	receive
 		die ->
 			exit(normal);
-		{grid_info, Grid } ->
+		
+		{grid_info, Grid } when Grid =/= false ->
 			handle_grid_info(World, Grid, State)
 	after State#gstate.generation_interval ->
 		State
 	end,
+	if 
+		State#gstate.generation rem 5 =:= 0 ->
+			World ! {self(), grid_info};
+		true ->
+			true
+	end,		
 	%% NewState is now set
 	Cos=math:cos(State#gstate.direction),
 	Sin=math:sin(State#gstate.direction),
@@ -71,7 +78,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	X1=X+State#gstate.speed * Cos,
 	Y1=Y-State#gstate.speed * Sin,
 
-	RandDeltaDirection=fun() -> ((-100+rand_uniform(0,201))*0.01) * 0.01 end,
+	RandDeltaDirection=fun() -> ((-100+rand_uniform(0,201))*0.01) * 0.1 end,
 	%% check if the size has reached the maximum value
 	%% increment generation counter
 	NewState2=NewState#gstate{
@@ -83,7 +90,25 @@ grazer(Grazer, World, State, _OldState  ) ->
 	grazer(Grazer, World, NewState2, State).
 
 
-handle_grid_info(_World, _Grid, State) ->
+handle_grid_info(_World, Grid, State) ->
+
+	{X,Y} = State#gstate.pos,
+	I=?gridindex(X,Y),
+	S=array:size(Grid),
+
+	{V, Pids} =
+	if 
+		I>=0, I<S -> array:get(I, Grid);
+		true -> {0,[]}
+	end,
+
+	if 
+		V =/= 0 ->
+			io:format("V=~p Pids=~p~n", [V, Pids]);
+		true ->
+			true
+
+	end,	
 	State.
 
 

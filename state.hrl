@@ -15,8 +15,8 @@
 	color=yellow,
 	generation=1,
 	pos,
-	lsize=20,
-	wsize=7,
+	lsize=40,
+	wsize=12,
 	speed=1,
 	direction=0,
 	comm_pid,
@@ -30,5 +30,5 @@
 -define(GRIDSIZE, 50).
 
 -define(gridindex(X,Y), 
-	(X div ?GRIDSIZE) + (Y div ?GRIDSIZE) * (?WORLDSIZE div ?GRIDSIZE)).
+	(round(X) div ?GRIDSIZE) + (round(Y) div ?GRIDSIZE) * (?WORLDSIZE div ?GRIDSIZE)).
 

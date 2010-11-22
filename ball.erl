@@ -89,7 +89,7 @@ ball(Ball, World, State, OldState  ) ->
 handle_grid_info(World, Grid, State) ->
 	{X,Y} = State#state.pos,
 	I=?gridindex(X,Y),
-	V=array:get(I, Grid),
+	{V, Pids} =array:get(I, Grid),
 	
 	R=rand_uniform(0,100) ,
 	if 
