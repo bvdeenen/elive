@@ -23,6 +23,7 @@ coords(State) ->
 	Shape0=[{L,-W}, {L+W/2,0}, {L,W}, {-L,W}, {-L,-W}, {L,-W}],
 	Cos=math:cos(State#gstate.direction),
 	Sin=math:sin(State#gstate.direction),
+	%% function for rotation of shape over State#gstate.direction radians.
 	PolarRotation = fun({X,Y}) -> {X*Cos-Y*Sin, -X*Sin -Y*Cos} end,
 	
 	{X,Y}=State#gstate.pos,
@@ -39,20 +40,18 @@ create_grazer(Canvas, World, {X,Y}) ->
 	D=math:pi()/360.0*rand_uniform(0,360),
 	State=#gstate{pos={X,Y}, direction=D},
 	Color= State#gstate.color,
-	Grazer=gs:polygon(Canvas,[
-		{coords,coords(State)},{fill,Color}]),
+	Grazer=gs:polygon(Canvas,[ {coords,coords(State)},{fill,Color}]),
 	GrazerCommunicator=spawn_link( fun() -> grazer_communicator(State) end),
 	GrazerProcess=spawn_link( fun() -> grazer(Grazer, World, 
 		State#gstate{comm_pid=GrazerCommunicator}, false) end ),
 	GrazerCommunicator ! { set_grazer_process, GrazerProcess},
 	GrazerCommunicator.
 
-
 grazer(Grazer, World, State, _OldState  ) ->
 	
 	gs:config(Grazer, [{coords, coords(State)}, {fill, State#gstate.color}, raise]),
 
-	NewState = 
+	NewState3 = 
 	receive
 		die ->
 			exit(normal);
@@ -61,6 +60,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	after State#gstate.generation_interval ->
 		State
 	end,
+	NewState = eat_one(World, NewState3),
 	if 
 		State#gstate.generation rem 5 =:= 0 ->
 			World ! {self(), grid_info};
@@ -76,7 +76,6 @@ grazer(Grazer, World, State, _OldState  ) ->
 	Y1=Y-State#gstate.speed * Sin,
 
 	RandDeltaDirection=fun() -> ((-100+rand_uniform(0,201))*0.01) * 0.1 end,
-	%% check if the size has reached the maximum value
 	%% increment generation counter
 	NewState2=NewState#gstate{
 		pos={X1,Y1},
@@ -86,8 +85,8 @@ grazer(Grazer, World, State, _OldState  ) ->
 	NewState2#gstate.comm_pid ! {update_state, NewState2},
 	grazer(Grazer, World, NewState2, State).
 
-
-handle_grid_info(World, Grid, State) ->
+%% received grid_info from World
+handle_grid_info(_World, Grid, State) ->
 
 	{X,Y} = State#gstate.pos,
 	I=?gridindex(X,Y),
@@ -101,11 +100,10 @@ handle_grid_info(World, Grid, State) ->
 
 	if 
 		V =/= 0 , Pids =/= []->
-			eat_one(World, V,Pids, I),
-			determine_direction(X,Y,V,Grid, State);
+			S2=determine_direction(X,Y,V,Grid, State),
+			S2#gstate{grid_ball_pids=Pids};
 		true ->
 			State
-
 	end.	
 
 
@@ -163,11 +161,19 @@ delta_dir(NewDirection, State)->
 		true       ->  0 
 	end.	
 	
-eat_one(World, _V, Pids, GridIndex) ->
-		I=rand_uniform(1,1+length(Pids)),
-		Pid=lists:nth(I, Pids),
-		Pid ! die,
-		World ! {eaten, GridIndex, Pid}.
+eat_one(_, State) when State#gstate.grid_ball_pids =:= [] ->
+	State;
+
+eat_one(World, State) ->
+	Pids=State#gstate.grid_ball_pids,
+	{X,Y} = State#gstate.pos,
+	GridIndex=?gridindex(X,Y),
+	I=rand_uniform(1,1+length(Pids)),
+	Pid=lists:nth(I, Pids),
+	%% io:format("~p eating ~p~n", [self(), Pid]),
+	Pid ! die,
+	World ! {eaten, GridIndex, Pid},
+	State#gstate{grid_ball_pids=lists:delete(Pid, Pids)}.
 
 clone_grazer(Canvas, OldState) ->
 	F=fun() -> rand_uniform(20, ?GRIDSIZE) end,

@@ -23,7 +23,8 @@
 	grazer_process,
 	generation_interval=200,
 	generation_die=250,
-	generation_split=20
+	generation_split=20,
+	grid_ball_pids=[] %% pids of balls in current grid cell
 	}).
 
 -define(WORLDSIZE, 600).

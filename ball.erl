@@ -39,8 +39,12 @@ ball(Ball, World, State, OldState  ) ->
 		OldState#state.pos =/= State#state.pos;
 		OldState#state.size =/= State#state.size;
 		OldState#state.color =/= State#state.color ->
-			gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
-				{fill, State#state.color}]);
+			try
+				gs:config(Ball,[{coords,[{X-Size, Y-Size}, {X+Size, Y+Size}]}, 
+					{fill, State#state.color}])
+			catch
+				_:_ -> true
+			end	;
 		true ->
 			true
 	end,		
@@ -84,7 +88,9 @@ ball(Ball, World, State, OldState  ) ->
 
 
 die(Ball, World, State) ->
-	gs:destroy(Ball),
+	try gs:destroy(Ball)
+	catch _:_ -> true
+	end,	
 	World ! {old_age_death, State#state.comm_pid },
 	State#state.comm_pid ! die,
 	exit(normal).
