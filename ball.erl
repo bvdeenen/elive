@@ -138,6 +138,10 @@ clone_ball(Canvas, OldState) ->
 ball_communicator(OldState) ->
 	NewState=
 	receive
+		{Pid, die} ->
+			Pid ! {self(), you_killed_me, OldState},
+			OldState#state.ball_process ! die,
+			exit(normal);
 		die ->
 			%% io:format("~p being told to die~n", [self()]),
 			OldState#state.ball_process ! die,

@@ -4,6 +4,8 @@
 -include("state.hrl").
 -compile(export_all).
 
+
+%% construction of grazers
 create_grazers(_, _World, 0) ->
 	[];
 
@@ -16,6 +18,7 @@ create_grazer(Canvas, World) ->
 	create_grazer(Canvas, World, Pos).
 
 
+%% grazer coordinates from state
 coords(State) ->
 	W = State#gstate.wsize,
 	L = State#gstate.lsize,
@@ -23,17 +26,15 @@ coords(State) ->
 	Shape0=[{L,-W}, {L+W/2,0}, {L,W}, {-L,W}, {-L,-W}, {L,-W}],
 	Cos=math:cos(State#gstate.direction),
 	Sin=math:sin(State#gstate.direction),
-	%% function for rotation of shape over State#gstate.direction radians.
-	PolarRotation = fun({X,Y}) -> {X*Cos-Y*Sin, -X*Sin -Y*Cos} end,
-	
 	{X,Y}=State#gstate.pos,
-		
-	Coords=lists:map(fun({X1,Y1}) -> 
-		{X1+X, Y1+Y} end, lists:map(PolarRotation, Shape0)),
-	Coords.
+	%% function for rotation of shape over State#gstate.direction radians.
+	PolarRotation = fun({X1,Y1}) -> {X1*Cos-Y1*Sin, -X1*Sin -Y1*Cos} end,
+	%% function for translation to {X,Y}
+	Translate = fun({X1,Y1}) -> {X1+X, Y1+Y} end,
+	lists:map(Translate, lists:map(PolarRotation, Shape0)).
 	
 	
-%% each grazer consists of three processes:
+%% each grazer consists of two processes:
 %% GrazerProcess: the process that makes a new generation every xx ms.
 %% grazer_communicator: the process that communicates with others and the Canvas
 create_grazer(Canvas, World, {X,Y}) ->
@@ -49,44 +50,54 @@ create_grazer(Canvas, World, {X,Y}) ->
 
 grazer(Grazer, World, State, _OldState  ) ->
 	
-	gs:config(Grazer, [{coords, coords(State)}, {fill, State#gstate.color}, raise]),
-
-	NewState3 = 
+	try gs:config(Grazer, [{coords, coords(State)}, {fill, State#gstate.color}, raise])
+	catch _:_ -> true
+	end,	
+	S1 = 
 	receive
 		die ->
 			exit(normal);
-		{grid_info, Grid } when Grid =/= false ->
-			handle_grid_info(World, Grid, State)
+		{grid_info, false} ->
+			State;
+		{grid_info, Grid } ->
+			handle_grid_info(Grid, State);
+		UM ->
+			io:format("Grazer ~p received unexpected message ~p~n", [self(), UM]),
+			State
 	after State#gstate.generation_interval ->
 		State
 	end,
-	NewState = eat_one(World, NewState3),
+	S2 = eat_one(World, S1),
 	if 
 		State#gstate.generation rem 5 =:= 0 ->
+			%% ask world for grid info
 			World ! {self(), grid_info};
 		true ->
 			true
 	end,		
-	%% NewState is now set
-	Cos=math:cos(NewState#gstate.direction),
-	Sin=math:sin(NewState#gstate.direction),
+	%% S2 is now set
 
+	%% move grazer
+	Cos=math:cos(S2#gstate.direction),
+	Sin=math:sin(S2#gstate.direction),
 	{X,Y}=State#gstate.pos,
 	X1=X+State#gstate.speed * Cos,
 	Y1=Y-State#gstate.speed * Sin,
 
-	RandDeltaDirection=fun() -> ((-100+rand_uniform(0,201))*0.01) * 0.1 end,
+	%% add some jitter to the direction
+	RandDeltaDirection=((-100+rand_uniform(0,201))*0.01) * 0.1,
+
 	%% increment generation counter
-	NewState2=NewState#gstate{
+	S3=S2#gstate{
 		pos={X1,Y1},
-		direction = NewState#gstate.direction + RandDeltaDirection(),
+		direction = S2#gstate.direction + RandDeltaDirection,
 		generation=State#gstate.generation+1}, 
 	%% tell GrazerCommunicator our new gstate
-	NewState2#gstate.comm_pid ! {update_state, NewState2},
-	grazer(Grazer, World, NewState2, State).
+	State#gstate.comm_pid ! {update_state, S3},
+	grazer(Grazer, World, S3, State).
 
 %% received grid_info from World
-handle_grid_info(_World, Grid, State) ->
+handle_grid_info(Grid, State) ->
 
 	{X,Y} = State#gstate.pos,
 	I=?gridindex(X,Y),
@@ -129,21 +140,23 @@ determine_direction(X, Y, _V, Grid, State) ->
 	A=lists:map(F, Offsets),
 	FSort=fun({_Dir1, W1}, {_Dir2,W2} ) -> W1 >= W2 end,
 
+	
 	{Dir, _B}=lists:nth(1, lists:sort(FSort, A)),
 	NewDirection=math:pi() * 2 * Dir / 8, %% 4 quadrants, 
 
-	%% NDir is a change of the original direction towards NewDirection
-	NDir=delta_dir(NewDirection, State),
+	%% DeltaDir is a change of the original direction towards NewDirection
+	DeltaDir=delta_dir(NewDirection, State),
 		
 	%%io:format("~p changed direction by ~p degrees~n", [self(),  
-		%% (NDir-State#gstate.direction) / math:pi() * 180]),
+		%% (DeltaDir-State#gstate.direction) / math:pi() * 180]),
 
-	State#gstate{direction=NDir}.
+	State#gstate{direction=DeltaDir}.
 
 delta_dir(NewDirection, State)->
 	OldDir=State#gstate.direction,
-	DeltaDir=round(180*(NewDirection - OldDir)/math:pi())
-		rem 360, %% between -359 and  + 359
+
+	%% DeltaDir between -359 and  + 359
+	DeltaDir=round(180*(NewDirection - OldDir)/math:pi()) rem 360, 
 	
 	DDir = if
 		DeltaDir < -180 -> DeltaDir + 360;
@@ -156,22 +169,31 @@ delta_dir(NewDirection, State)->
 	if 
 		DDir < -90 -> -30;
 		DDir < -45 -> -10;
+		DDir < -10 -> -5;
+		DDir >  10 ->  5;
 		DDir >  45 ->  10;
 		DDir >  90 ->  30;
 		true       ->  0 
 	end.	
 	
+%% nothing to eat in this gridcell
 eat_one(_, State) when State#gstate.grid_ball_pids =:= [] ->
 	State;
 
+%% one or more ball sto eat in State#gstate.grid_ball_pids
 eat_one(World, State) ->
 	Pids=State#gstate.grid_ball_pids,
 	{X,Y} = State#gstate.pos,
 	GridIndex=?gridindex(X,Y),
-	I=rand_uniform(1,1+length(Pids)),
-	Pid=lists:nth(I, Pids),
+	Pid=lists:nth(rand_uniform(1,1+length(Pids)), Pids),
 	%% io:format("~p eating ~p~n", [self(), Pid]),
-	Pid ! die,
+	Pid ! {self(), die},
+	receive {Pid, you_killed_me, DeadState} ->
+			io:format("mmm, ate ~p~n", [DeadState#state.size])
+	after 50 -> 
+		io:format("~p was dead already~n", [Pid])
+	end,		
+		
 	World ! {eaten, GridIndex, Pid},
 	State#gstate{grid_ball_pids=lists:delete(Pid, Pids)}.
 
