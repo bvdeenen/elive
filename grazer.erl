@@ -50,9 +50,7 @@ create_grazer(Canvas, World, {X,Y}) ->
 
 grazer(Grazer, World, State, _OldState  ) ->
 	
-	
-	gs:config(Grazer, [{coords, coords(State)},
-	{fill, State#gstate.color}, raise]),
+	gs:config(Grazer, [{coords, coords(State)}, {fill, State#gstate.color}, raise]),
 
 	NewState = 
 	receive
@@ -133,15 +131,39 @@ determine_direction(X, Y, _V, Grid, State) ->
 	A=lists:map(F, Offsets),
 	FSort=fun({_Dir1, W1}, {_Dir2,W2} ) -> W1 >= W2 end,
 
-	{Dir, B}=lists:nth(1, lists:sort(FSort, A)),
+	{Dir, _B}=lists:nth(1, lists:sort(FSort, A)),
 	NewDirection=math:pi() * 2 * Dir / 8, %% 4 quadrants, 
+
+	%% NDir is a change of the original direction towards NewDirection
+	NDir=delta_dir(NewDirection, State),
 		
-	%% io:format("Dir=~p, B=~p, NewDirection=~p~n", [Dir, B, NewDirection]),
+	%%io:format("~p changed direction by ~p degrees~n", [self(),  
+		%% (NDir-State#gstate.direction) / math:pi() * 180]),
 
-	State#gstate{direction=NewDirection}.
+	State#gstate{direction=NDir}.
 
+delta_dir(NewDirection, State)->
+	OldDir=State#gstate.direction,
+	DeltaDir=round(180*(NewDirection - OldDir)/math:pi())
+		rem 360, %% between -359 and  + 359
+	
+	DDir = if
+		DeltaDir < -180 -> DeltaDir + 360;
+		DeltaDir > 180  -> DeltaDir - 360;
+		true            -> DeltaDir
+	end,
 
-eat_one(World, V, Pids, GridIndex) ->
+	OldDir + 
+	math:pi() * 2 / 360 * 
+	if 
+		DDir < -90 -> -30;
+		DDir < -45 -> -10;
+		DDir >  45 ->  10;
+		DDir >  90 ->  30;
+		true       ->  0 
+	end.	
+	
+eat_one(World, _V, Pids, GridIndex) ->
 		I=rand_uniform(1,1+length(Pids)),
 		Pid=lists:nth(I, Pids),
 		Pid ! die,

@@ -48,7 +48,7 @@ ball(Ball, World, State, OldState  ) ->
 	NewState = 
 	receive
 		die ->
-			exit(normal);
+			die(Ball, World, State);
 		{grid_info, Grid } ->
 			handle_grid_info(World, Grid, State)
 	after State#state.generation_interval ->
@@ -79,17 +79,20 @@ ball(Ball, World, State, OldState  ) ->
 		R2 < 95 ->
 			ball(Ball, World, NewState2, State);
 		true-> %% ball dies
-			gs:destroy(Ball),
-			World ! {old_age_death, NewState2#state.comm_pid },
-			NewState2#state.comm_pid ! die,
-			exit(normal)
+			die(Ball, World, NewState2)
 	end.  
 
 
+die(Ball, World, State) ->
+	gs:destroy(Ball),
+	World ! {old_age_death, State#state.comm_pid },
+	State#state.comm_pid ! die,
+	exit(normal).
+	
 handle_grid_info(World, Grid, State) ->
 	{X,Y} = State#state.pos,
 	I=?gridindex(X,Y),
-	{V, Pids} =array:get(I, Grid),
+	{V, _Pids} =array:get(I, Grid),
 	
 	R=rand_uniform(0,100) ,
 	if 
