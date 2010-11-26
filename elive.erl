@@ -16,7 +16,7 @@ init() ->
 	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
 	Pids = ball:create_balls(Canvas, self(), _Nballs=40),
 
-	grazer:create_grazers(Canvas, self(), _NGrazers=40),
+	grazer:create_grazers(Canvas, self(), _NGrazers=5),
 
 	World=self(),
 	spawn_link(fun() -> statistics_process:start(World) end),
@@ -45,6 +45,10 @@ loop(Canvas, Pids, GridInfo) ->
 				false -> loop(Canvas, Pids, GridInfo)	;
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] , GridInfo)
 			end	;
+		{ _Pid, split_grazer, OldState } ->
+			io:format("~p asking for clone of Grazer ,~n~p~n", [_Pid, OldState]),
+			grazer:clone_grazer(Canvas, OldState) ,
+			loop(Canvas, Pids, GridInfo);
 		{old_age_death, Pid} ->
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
