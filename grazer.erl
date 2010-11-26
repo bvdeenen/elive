@@ -208,6 +208,7 @@ eat_one(World, State) ->
 	Pids=State#gstate.grid_ball_pids,
 	{X,Y} = State#gstate.pos,
 	GridIndex=?gridindex(X,Y),
+		
 	Pid=lists:nth(rand_uniform(1,1+length(Pids)), Pids),
 	%% io:format("~p eating ~p~n", [self(), Pid]),
 	Pid ! {self(), die},

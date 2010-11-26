@@ -53,9 +53,14 @@ loop(Canvas, Pids, GridInfo) ->
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
 		{eaten, I, Pid} ->
-			{V, CellPids}=array:get(I, GridInfo),
-			%% TODO must also lower V appropriate value
-			GN=array:set(I, {V, lists:delete(Pid, CellPids)}, GridInfo),
+			GN=
+			try
+				{V, CellPids}=array:get(I, GridInfo),
+				%% TODO must also lower V appropriate value
+				array:set(I, {V, lists:delete(Pid, CellPids)}, GridInfo)
+			catch
+				_:_ -> GridInfo
+			end,	
 			loop(Canvas, lists:delete(Pid, Pids), GN);
 		{'EXIT', Pid, normal } ->	
 			%% io:format("~p died of old age~n", [Pid]),
