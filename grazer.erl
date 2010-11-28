@@ -23,7 +23,8 @@ coords(State) ->
 	W = State#gstate.wsize,
 	L = State#gstate.lsize,
 	%% zero rotation shape
-	Shape0=[{L,-W}, {L+W/2,0}, {L,W}, {-L,W}, {-L,-W}, {L,-W}],
+	F=L*(-1 + 2 * State#gstate.food_state / State#gstate.food_enough),
+	Shape0=[{L,-W}, {L+W/2,0}, {L,W}, {-L,W}, {-L,-W}, {F,-W}, {F,W}, {F,-W}, {L,-W}],
 	Cos=math:cos(State#gstate.direction),
 	Sin=math:sin(State#gstate.direction),
 	{X,Y}=State#gstate.pos,
@@ -96,7 +97,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 
 	FoodState=
 	if 
-		S3#gstate.food_state > 100,
+		S3#gstate.food_state > #gstate.food_enough,
 		S3#gstate.generation > 50 ->
 			World ! { self(), split_grazer, S3 },
 			#gstate.food_state;

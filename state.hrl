@@ -25,6 +25,7 @@
 	generation_die=250,
 	generation_split=20,
 	food_state=20,
+	food_enough = 100,
 	grid_ball_pids=[] %% pids of balls in current grid cell
 	}).
 
