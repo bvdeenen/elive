@@ -108,7 +108,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	if 
 		S3#gstate.food_state < 1 -> 
 			io:format("Grazer ~p dying of hunger ~p ~n", [self(), S3]),
-			die(Grazer, World, S3);
+			die(Grazer, World, State);
 		true -> true
 	end,	
 	%% tell GrazerCommunicator our new gstate
@@ -116,6 +116,13 @@ grazer(Grazer, World, State, _OldState  ) ->
 	grazer(Grazer, World, S3#gstate{food_state=FoodState}, State).
 
 die(Grazer, _World, State) ->
+	try gs:config(Grazer, [ {fill, 'grey'}])
+	catch _:_ -> true
+	end,	
+	receive
+	after 1000 -> true
+	end,
+	
 	gs:destroy(Grazer),
 	State#gstate.comm_pid ! die,
 	exit(normal).
