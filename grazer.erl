@@ -70,7 +70,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	end,
 	S2 = eat_one(World, S1),
 	if 
-		State#gstate.generation rem 5 =:= 0 ->
+		State#gstate.generation rem 4 =:= 0 ->
 			%% ask world for grid info
 			World ! {self(), grid_info};
 		true ->
@@ -107,7 +107,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	end,		
 	if 
 		S3#gstate.food_state < 1 -> 
-			io:format("Grazer ~p dying of hunger ~p ~n", [self(), S3]),
+			%% io:format("Grazer ~p dying of hunger ~p ~n", [self(), S3]),
 			die(Grazer, World, State);
 		true -> true
 	end,	

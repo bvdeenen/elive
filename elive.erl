@@ -46,7 +46,7 @@ loop(Canvas, Pids, GridInfo) ->
 				Pid1 ->  loop(Canvas, [Pid1 | Pids] , GridInfo)
 			end	;
 		{ _Pid, split_grazer, OldState } ->
-			io:format("~p asking for clone of Grazer ,~n~p~n", [_Pid, OldState]),
+			%% io:format("~p asking for clone of Grazer ,~n~p~n", [_Pid, OldState]),
 			grazer:clone_grazer(Canvas, OldState) ,
 			loop(Canvas, Pids, GridInfo);
 		{old_age_death, Pid} ->
