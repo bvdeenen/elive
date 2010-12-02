@@ -18,9 +18,9 @@ init() ->
 
 	grazer:create_grazers(Canvas, self(), _NGrazers=5),
 
-	World=self(),
 	process_flag(trap_exit, true),
-	spawn_link(fun() -> statistics_process:start(World) end),
+	register(world, self()),
+	spawn_link(fun() -> statistics_process:start() end),
 	loop(Canvas, Pids, false),
 	gs:stop().
 

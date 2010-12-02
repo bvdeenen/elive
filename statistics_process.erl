@@ -1,16 +1,16 @@
 -module(statistics_process).
 
--export([start/1]).
+-export([start/0]).
 
 -include("state.hrl").
 
-start(World) ->
+start() ->
 	receive
 	after 1000 -> true
 	end,
-	World ! {self(), give_pids},
+	world ! {self(), give_pids},
 	receive
-		{World, Pids} ->
+		{_, Pids} ->
 			io:format("~p balls~n", [length(Pids)])
 	end,
 	%% ask all balls for state
@@ -20,8 +20,8 @@ start(World) ->
 	Grid=grid(State, array:new([ {size, S}, {default,{0, []}}])),
 	%% notify all comm processes of Grid
 	lists:map(fun(St) -> notify(St, Grid) end, State),
-	World ! {grid_info, Grid},
-	start(World).
+	world ! {grid_info, Grid},
+	start().
 
 notify({Pid, _Pos,  _Size}, Grid) ->
 	Pid ! {self(), grid_info, Grid}.
