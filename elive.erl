@@ -19,6 +19,7 @@ init() ->
 	grazer:create_grazers(Canvas, self(), _NGrazers=5),
 
 	World=self(),
+	process_flag(trap_exit, true),
 	spawn_link(fun() -> statistics_process:start(World) end),
 	loop(Canvas, Pids, false),
 	gs:stop().
@@ -49,19 +50,22 @@ loop(Canvas, Pids, GridInfo) ->
 			%% io:format("~p asking for clone of Grazer ,~n~p~n", [_Pid, OldState]),
 			grazer:clone_grazer(Canvas, OldState) ,
 			loop(Canvas, Pids, GridInfo);
-		{old_age_death, Pid} ->
-			%% io:format("~p died of old age~n", [Pid]),
+		{'EXIT', Pid, ball_old_age_death} ->
+			io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
-		{eaten, I, Pid} ->
+		{'EXIT', Pid, eaten} ->
+			io:format("~p died because it was eaten~n", [Pid]),
+			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
+		{eaten, GridIndex, Pid} ->
 			GN=
 			try
-				{V, CellPids}=array:get(I, GridInfo),
+				{V, CellPids}=array:get(GridIndex, GridInfo),
 				%% TODO must also lower V appropriate value
-				array:set(I, {V, lists:delete(Pid, CellPids)}, GridInfo)
+				array:set(GridIndex, {V, lists:delete(Pid, CellPids)}, GridInfo)
 			catch
 				_:_ -> GridInfo
 			end,	
-			loop(Canvas, lists:delete(Pid, Pids), GN);
+			loop(Canvas, Pids, GN);
 		{'EXIT', Pid, normal } ->	
 			%% io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);

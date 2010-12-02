@@ -219,13 +219,13 @@ eat_one(World, State) ->
 		
 	Pid=lists:nth(rand_uniform(1,1+length(Pids)), Pids),
 	%% io:format("~p eating ~p~n", [self(), Pid]),
-	Pid ! {self(), die},
+	Pid ! {self(), i_eat_you},
 	Meal=
-	receive {Pid, you_killed_me, DeadState} ->
-		%%io:format("mmm, ate ~p~n", [DeadState#state.size]),
+	receive {Pid, you_ate_me, DeadState} ->
+		io:format("mmm, ate ~p~n", [DeadState#state.size]),
 		DeadState#state.size
 	after 50 -> 
-		%%io:format("~p was dead already~n", [Pid]),
+		io:format("~p was dead already~n", [Pid]),
 		0
 	end,		
 		

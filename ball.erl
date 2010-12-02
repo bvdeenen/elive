@@ -23,12 +23,16 @@ create_ball(Canvas, World, {X,Y}) ->
 	Size = State#state.size, %% uses default value from recrd
 	Color= State#state.color,
 	Ball=gs:oval(Canvas,[{coords,[{X-Size, Y-Size}, {X+Size,Y+Size}]},{fill,Color}]),
-	BallCommunicator=spawn_link( fun() -> ball_communicator(State) end),
-	BallProcess=spawn_link( fun() -> ball(Ball, World, 
-		State#state{comm_pid=BallCommunicator}, false) end ),
+	BallCommunicator=spawn_link( fun() -> ball_communicator(State, init) end),
+	BallProcess=spawn( fun() -> ball(Ball, World, 
+		State#state{comm_pid=BallCommunicator}, init) end ),
 	BallCommunicator ! { set_ball_process, BallProcess},
 	BallCommunicator.
 
+
+ball(Ball, World, State, init  ) ->
+	process_flag(trap_exit, true),
+	ball(Ball, World, State, false  ) ;
 
 ball(Ball, World, State, OldState  ) ->
 	
@@ -51,8 +55,11 @@ ball(Ball, World, State, OldState  ) ->
 
 	NewState = 
 	receive
+		{'EXIT', Pid,  Why} when Pid =:= State#state.comm_pid ->
+			io:format("ball ~p died because ~p~n", [self(), Why]),
+			die(Ball);
 		die ->
-			die(Ball, World, State);
+			die(Ball);
 		{grid_info, Grid } ->
 			handle_grid_info(World, Grid, State)
 	after State#state.generation_interval ->
@@ -83,17 +90,15 @@ ball(Ball, World, State, OldState  ) ->
 		R2 < 95 ->
 			ball(Ball, World, NewState2, State);
 		true-> %% ball dies
-			die(Ball, World, NewState2)
+			die(Ball)
 	end.  
 
 
-die(Ball, World, State) ->
+die(Ball) ->
 	try gs:destroy(Ball)
 	catch _:_ -> true
 	end,	
-	World ! {old_age_death, State#state.comm_pid },
-	State#state.comm_pid ! die,
-	exit(normal).
+	exit(ball_old_age_death).
 	
 handle_grid_info(World, Grid, State) ->
 	{X,Y} = State#state.pos,
@@ -135,18 +140,23 @@ clone_ball(Canvas, OldState) ->
 	create_ball(Canvas, self(), {X+DX, Y+DY}).
 
 
+
+ball_communicator(State, init) ->
+	process_flag(trap_exit, true),
+	ball_communicator(State).
+
 ball_communicator(OldState) ->
 	NewState=
 	receive
-		{Pid, die} ->
-			Pid ! {self(), you_killed_me, OldState},
-			OldState#state.ball_process ! die,
-			exit(normal);
-		die ->
-			%% io:format("~p being told to die~n", [self()]),
-			OldState#state.ball_process ! die,
-			exit(normal);
+		{'EXIT', _Pid, ball_old_age_death} ->
+			%%io:format("~p died of old age~n", [self()]),
+			exit(ball_old_age_death);
+		{Pid, i_eat_you} ->
+			Pid ! {self(), you_ate_me, OldState},
+			exit(eaten);
+			
 		{set_ball_process, Pid} ->
+			link(Pid),
 			OldState#state{ball_process=Pid};
 		{Pid, get_state} ->
 			Pid ! {self(), info, OldState},
