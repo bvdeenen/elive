@@ -6,6 +6,8 @@
 
 start() ->
 	receive
+		quit ->
+			exit(normal)
 	after 1000 -> true
 	end,
 	world ! {self(), give_pids},

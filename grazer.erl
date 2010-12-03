@@ -6,17 +6,16 @@
 
 
 %% construction of grazers
-create_grazers(_, _World, 0) ->
-	[];
+create_grazers(_, 0) -> [];
 
-create_grazers( Canvas, World, Ngrazers) ->
-	[create_grazer(Canvas, World) | create_grazers(Canvas, World, Ngrazers-1)].
+create_grazers( Canvas, Ngrazers) ->
+	[create_grazer(Canvas) | create_grazers(Canvas, Ngrazers-1)].
 
-create_grazer(Canvas, World) ->
+%% create grazer with random position
+create_grazer(Canvas) ->
 	F=fun()->rand_uniform(?GRIDSIZE, ?WORLDSIZE-?GRIDSIZE) end,
 	Pos = { F(), F() },
-	create_grazer(Canvas, World, Pos).
-
+	create_grazer(Canvas, Pos).
 
 %% grazer coordinates from state
 coords(State) ->
@@ -38,26 +37,26 @@ coords(State) ->
 %% each grazer consists of two processes:
 %% GrazerProcess: the process that makes a new generation every xx ms.
 %% grazer_communicator: the process that communicates with others and the Canvas
-create_grazer(Canvas, World, {X,Y}) ->
+create_grazer(Canvas, {X,Y}) ->
 	D=math:pi()/360.0*rand_uniform(0,360),
 	State=#gstate{pos={X,Y}, direction=D},
 	Color= State#gstate.color,
 	Grazer=gs:polygon(Canvas,[ {coords,coords(State)},{fill,Color}]),
-	GrazerCommunicator=spawn_link( fun() -> grazer_communicator(State) end),
-	GrazerProcess=spawn_link( fun() -> grazer(Grazer, World, 
+	GrazerCommunicator=spawn_link( fun() -> grazer_communicator(State, Grazer, init) end),
+	GrazerProcess=spawn_link( fun() -> grazer(Grazer, 
 		State#gstate{comm_pid=GrazerCommunicator}, false) end ),
 	GrazerCommunicator ! { set_grazer_process, GrazerProcess},
 	GrazerCommunicator.
 
-grazer(Grazer, World, State, _OldState  ) ->
+
+
+grazer(Grazer, State, _OldState  ) ->
 	
 	try gs:config(Grazer, [{coords, coords(State)}, {fill, State#gstate.color}, raise])
 	catch _:_ -> true
 	end,	
 	S1 = 
 	receive
-		die ->
-			die(Grazer, World, State);
 		{grid_info, false} ->
 			State;
 		{grid_info, Grid } ->
@@ -68,11 +67,11 @@ grazer(Grazer, World, State, _OldState  ) ->
 	after State#gstate.generation_interval ->
 		State
 	end,
-	S2 = eat_one(World, S1),
+	S2 = eat_one(S1),
 	if 
 		State#gstate.generation rem 4 =:= 0 ->
 			%% ask world for grid info
-			World ! {self(), grid_info};
+			world ! {self(), grid_info};
 		true ->
 			true
 	end,		
@@ -99,7 +98,7 @@ grazer(Grazer, World, State, _OldState  ) ->
 	if 
 		S3#gstate.food_state > #gstate.food_enough,
 		S3#gstate.generation > 50 ->
-			World ! { self(), split_grazer, S3 },
+			world ! { self(), split_grazer, S3 },
 			#gstate.food_state;
 		true ->
 			S3#gstate.food_state 
@@ -108,26 +107,28 @@ grazer(Grazer, World, State, _OldState  ) ->
 	if 
 		S3#gstate.food_state < 1 -> 
 			%% io:format("Grazer ~p dying of hunger ~p ~n", [self(), S3]),
-			die(Grazer, World, State);
+			exit(starved);
 		true -> true
 	end,	
 	%% tell GrazerCommunicator our new gstate
 	State#gstate.comm_pid ! {update_state, S3},
-	grazer(Grazer, World, S3#gstate{food_state=FoodState}, State).
+	grazer(Grazer, S3#gstate{food_state=FoodState}, State).
 
-die(Grazer, _World, State) ->
-	try gs:config(Grazer, [ {fill, 'grey'}])
-	catch _:_ -> true
-	end,	
+death_handler(Grazer) ->
+	process_flag(trap_exit, true),
+	receive
+		{'EXIT', _Pid, starved } ->
+			gs:config(Grazer, [ {fill, 'none'}]);
+		{'EXIT', _Pid, Why } ->
+			io:format("Grazer died ~p~n", [Why])
+	end,
 	receive
 	after 1000 -> true
 	end,
-	
-	gs:destroy(Grazer),
-	State#gstate.comm_pid ! die,
-	exit(normal).
+	gs:destroy(Grazer).
 
-%% received grid_info from World
+
+%% received grid_info from world
 handle_grid_info(Grid, State) ->
 
 	{X,Y} = State#gstate.pos,
@@ -208,11 +209,11 @@ delta_dir(NewDirection, State)->
 	end.	
 	
 %% nothing to eat in this gridcell
-eat_one(_, State) when State#gstate.grid_ball_pids =:= [] ->
+eat_one(State) when State#gstate.grid_ball_pids =:= [] ->
 	State;
 
 %% one or more ball sto eat in State#gstate.grid_ball_pids
-eat_one(World, State) ->
+eat_one(State) ->
 	Pids=State#gstate.grid_ball_pids,
 	{X,Y} = State#gstate.pos,
 	GridIndex=?gridindex(X,Y),
@@ -222,14 +223,14 @@ eat_one(World, State) ->
 	Pid ! {self(), i_eat_you},
 	Meal=
 	receive {Pid, you_ate_me, DeadState} ->
-		io:format("mmm, ate ~p~n", [DeadState#state.size]),
+		%% io:format("mmm, ate ~p~n", [DeadState#state.size]),
 		DeadState#state.size
 	after 50 -> 
-		io:format("~p was dead already~n", [Pid]),
+		%% io:format("~p was dead already~n", [Pid]),
 		0
 	end,		
 		
-	World ! {eaten, GridIndex, Pid},
+	world ! {eaten, GridIndex, Pid},
 	State#gstate{food_state=State#gstate.food_state+Meal,
 		grid_ball_pids=lists:delete(Pid, Pids)}.
 
@@ -246,17 +247,21 @@ clone_grazer(Canvas, OldState) ->
 		true -> { 0, 0}
 	end	,
 	{X,Y}=OldState#gstate.pos,
-	create_grazer(Canvas, self(), {X+DX, Y+DY}).
+	create_grazer(Canvas, {X+DX, Y+DY}).
 
+
+grazer_communicator(OldState, Grazer, init) ->
+	spawn_link( fun()->death_handler(Grazer) end),
+	grazer_communicator(OldState).
 
 grazer_communicator(OldState) ->
 	NewState=
 	receive
 		die ->
 			%% io:format("~p being told to die~n", [self()]),
-			OldState#gstate.grazer_process ! die,
-			exit(normal);
+			exit(told_to_die);
 		{set_grazer_process, Pid} ->
+			link(Pid),
 			OldState#gstate{grazer_process=Pid};
 		{Pid, get_state} ->
 			Pid ! {self(), info, OldState},

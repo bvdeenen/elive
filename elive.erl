@@ -12,16 +12,17 @@ init() ->
 	crypto:start(),
 	I= gs:start(),
 	W= gs:window(I,[{title,"Ball"},{width,?WORLDSIZE},{height,?WORLDSIZE},{map,true}]),
-	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,white}]),
-	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
-	Pids = ball:create_balls(Canvas, self(), _Nballs=40),
-
-	grazer:create_grazers(Canvas, self(), _NGrazers=5),
-
 	process_flag(trap_exit, true),
 	register(world, self()),
-	spawn_link(fun() -> statistics_process:start() end),
+	Canvas= gs:canvas(W,[{width,?WORLDSIZE},{height,?WORLDSIZE},{bg,white}]),
+	gs:create(button, quit, W, [{label, {text,"Quit Elive"}},{x,5}, {y, 5}]),
+	Pids = ball:create_balls(Canvas, _Nballs=40),
+
+	grazer:create_grazers(Canvas, _NGrazers=5),
+
+	Sp=spawn_link(fun() -> statistics_process:start() end),
 	loop(Canvas, Pids, false),
+	Sp ! quit,
 	gs:stop().
 
 	
@@ -51,11 +52,13 @@ loop(Canvas, Pids, GridInfo) ->
 			grazer:clone_grazer(Canvas, OldState) ,
 			loop(Canvas, Pids, GridInfo);
 		{'EXIT', Pid, ball_old_age_death} ->
-			io:format("~p died of old age~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
 		{'EXIT', Pid, eaten} ->
-			io:format("~p died because it was eaten~n", [Pid]),
+			%% io:format("~p died because it was eaten~n", [Pid]),
 			loop(Canvas, lists:delete(Pid, Pids), GridInfo);
+		{'EXIT', _Pid, starved} ->
+			%% io:format("grazer ~p starved~n", [Pid]),
+			loop(Canvas, Pids, GridInfo);
 		{eaten, GridIndex, Pid} ->
 			GN=
 			try
@@ -76,7 +79,7 @@ loop(Canvas, Pids, GridInfo) ->
 
 
 quit_balls(Pids) ->
-	lists:map( fun(Pid) -> Pid ! die end, Pids).
+	lists:map( fun(Pid) -> Pid ! die_normal end, Pids).
 
 
 %% vim:tw=0
