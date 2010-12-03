@@ -62,7 +62,9 @@ ball(Ball, State, OldState  ) ->
 		die_normal ->
 			exit(told_to_die);
 		{grid_info, Grid } ->
-			handle_grid_info(Grid, State)
+			handle_grid_info(Grid, State);
+		Message ->
+			io:format("Ball ~p received unexpected message ~p~n", [self(), Message])
 	after State#state.generation_interval ->
 		State
 	end,
@@ -109,8 +111,7 @@ death_handler(Ball) ->
 		Message ->	
 			io:format("Death handler received unexpected ~p~n", [Message])
 	end,
-	receive 
-	after 1000 -> true end,
+	receive after 1000 -> true end,
 	gs:destroy(Ball).
 	
 handle_grid_info(Grid, State) ->
@@ -161,23 +162,28 @@ ball_communicator(State, init) ->
 ball_communicator(OldState) ->
 	NewState=
 	receive
+		%% our BallProcess died of old age
 		{'EXIT', _Pid, ball_old_age_death} ->
-			%%io:format("~p died of old age~n", [self()]),
 			exit(ball_old_age_death);
+		%% someone eats us
 		{Pid, i_eat_you} ->
 			Pid ! {self(), you_ate_me, OldState},
 			exit({eaten, OldState});
-			
+		%% regular death, uses exit(die_normal) to kill connected BallProcess	
 		die_normal ->
 			exit(die_normal);
+		%% called once to connect to BallProcess
 		{set_ball_process, Pid} ->
 			link(Pid),
 			OldState#state{ball_process=Pid};
+		%% someone ('world', 'grazer', ...) wants State
 		{Pid, get_state} ->
 			Pid ! {self(), info, OldState},
 			OldState;
+		%% received new state from BallProcess
 		{update_state, State} ->
 			State#state{ball_process=OldState#state.ball_process};
+		%% pass grid info to BallProcess 
 		{_PidStatProcess, grid_info, Grid } ->
 			OldState#state.ball_process ! {grid_info, Grid},
 			OldState;
