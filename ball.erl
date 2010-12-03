@@ -98,7 +98,7 @@ death_handler(Ball) ->
 	
 	process_flag(trap_exit, true),
 	receive
-		{'EXIT', _Pid, eaten} ->
+		{'EXIT', _Pid, {eaten, _State}} ->
 			gs:config(Ball, [ {fill, 'yellow'}]);
 		{'EXIT', _Pid, ball_old_age_death} ->
 			gs:config(Ball, [ {fill, 'none'}]);
@@ -110,7 +110,7 @@ death_handler(Ball) ->
 			io:format("Death handler received unexpected ~p~n", [Message])
 	end,
 	receive 
-	after 3000 -> true end,
+	after 1000 -> true end,
 	gs:destroy(Ball).
 	
 handle_grid_info(Grid, State) ->
@@ -166,7 +166,7 @@ ball_communicator(OldState) ->
 			exit(ball_old_age_death);
 		{Pid, i_eat_you} ->
 			Pid ! {self(), you_ate_me, OldState},
-			exit(eaten);
+			exit({eaten, OldState});
 			
 		die_normal ->
 			exit(die_normal);

@@ -215,8 +215,6 @@ eat_one(State) when State#gstate.grid_ball_pids =:= [] ->
 %% one or more ball sto eat in State#gstate.grid_ball_pids
 eat_one(State) ->
 	Pids=State#gstate.grid_ball_pids,
-	{X,Y} = State#gstate.pos,
-	GridIndex=?gridindex(X,Y),
 		
 	Pid=lists:nth(rand_uniform(1,1+length(Pids)), Pids),
 	%% io:format("~p eating ~p~n", [self(), Pid]),
@@ -230,7 +228,6 @@ eat_one(State) ->
 		0
 	end,		
 		
-	world ! {eaten, GridIndex, Pid},
 	State#gstate{food_state=State#gstate.food_state+Meal,
 		grid_ball_pids=lists:delete(Pid, Pids)}.
 
