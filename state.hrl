@@ -1,19 +1,19 @@
 -record(state, {
-	color=red,
-	dsize=0.1,
-	generation=1,
-	pos,
+	color =red :: atom(),
+	dsize=0.1 :: float(),
+	generation=1 :: integer(),
+	pos :: list(),
 	size=2,
-	comm_pid,
-	ball_process,
+	comm_pid :: pid(),
+	ball_process :: pid(),
 	generation_interval=50,
 	generation_die=250,
 	generation_split=20
 	}).
 
 -record(gstate, {
-	color=yellow,
-	generation=1,
+	color=yellow :: atom(),
+	generation=1 :: integer(),
 	pos,
 	lsize=20,
 	wsize=7,
